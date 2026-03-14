@@ -2,12 +2,12 @@
 
 import asyncio
 import logging
+import multiprocessing as mp
 import threading
 import time
 import traceback as tb
 from typing import Dict, List, Optional
 
-import cv2
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
@@ -149,45 +149,92 @@ async def wiggle_gripper(request: WiggleRequest):
 # MJPEG camera streaming
 # ---------------------------------------------------------------------------
 
+
+def _camera_worker(index: int, queue: mp.Queue, stop_event: mp.Event) -> None:
+    """Capture frames in a separate process to avoid macOS AVFoundation cache."""
+    import cv2
+    import time
+
+    cap = cv2.VideoCapture(index)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    while not stop_event.is_set():
+        ret, frame = cap.read()
+        if ret:
+            _, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            data = jpeg.tobytes()
+            # Keep only the latest frame
+            while not queue.empty():
+                try:
+                    queue.get_nowait()
+                except Exception:
+                    break
+            try:
+                queue.put_nowait(data)
+            except Exception:
+                pass
+        time.sleep(1 / 15)
+    cap.release()
+
+
 class _CameraStream:
-    """Manages a single OpenCV camera capture shared across MJPEG clients."""
+    """Manages a camera capture subprocess shared across MJPEG clients."""
 
     def __init__(self, index: int):
         self.index = index
-        self._cap: cv2.VideoCapture | None = None
         self._lock = threading.Lock()
         self._clients = 0
         self._frame: bytes | None = None
         self._running = False
-        self._thread: threading.Thread | None = None
+        self._process: mp.Process | None = None
+        self._queue: mp.Queue | None = None
+        self._stop_event: mp.Event | None = None
+        self._reader_thread: threading.Thread | None = None
 
-    def _capture_loop(self) -> None:
-        cap = cv2.VideoCapture(self.index)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        self._cap = cap
+    def _reader_loop(self) -> None:
+        """Pull frames from the subprocess queue into self._frame."""
         while self._running:
-            ret, frame = cap.read()
-            if ret:
-                _, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
-                self._frame = jpeg.tobytes()
-            time.sleep(1 / 15)  # ~15 fps
-        cap.release()
-        self._cap = None
+            try:
+                frame = self._queue.get(timeout=0.1)
+                self._frame = frame
+            except Exception:
+                pass
 
     def add_client(self) -> None:
         with self._lock:
             self._clients += 1
             if not self._running:
                 self._running = True
-                self._thread = threading.Thread(target=self._capture_loop, daemon=True)
-                self._thread.start()
+                self._frame = None
+                self._stop_event = mp.Event()
+                self._queue = mp.Queue()
+                self._process = mp.Process(
+                    target=_camera_worker,
+                    args=(self.index, self._queue, self._stop_event),
+                    daemon=True,
+                )
+                self._process.start()
+                self._reader_thread = threading.Thread(
+                    target=self._reader_loop, daemon=True
+                )
+                self._reader_thread.start()
 
     def remove_client(self) -> None:
         with self._lock:
             self._clients = max(0, self._clients - 1)
             if self._clients == 0:
-                self._running = False
+                self._stop()
+
+    def _stop(self) -> None:
+        self._running = False
+        if self._stop_event is not None:
+            self._stop_event.set()
+        if self._process is not None:
+            self._process.join(timeout=3)
+            if self._process.is_alive():
+                self._process.kill()
+            self._process = None
+        self._frame = None
 
     @property
     def frame(self) -> bytes | None:
@@ -206,17 +253,11 @@ def _get_camera_stream(index: int) -> _CameraStream:
 
 
 def _stop_all_streams() -> None:
-    """Stop all active MJPEG streams and wait for capture threads to release cameras."""
-    threads: list[threading.Thread] = []
+    """Stop all active MJPEG streams and wait for subprocesses to release cameras."""
     with _streams_lock:
         for stream in _camera_streams.values():
-            stream._running = False
-            if stream._thread is not None:
-                threads.append(stream._thread)
+            stream._stop()
         _camera_streams.clear()
-    # Wait for capture threads to fully exit and release cameras
-    for t in threads:
-        t.join(timeout=3)
 
 
 @router.post("/cameras/streams/stop")

@@ -82,6 +82,18 @@ The frontend is a single-page wizard with 6 sequential steps. One centered card 
 
 ## Changelog
 
+### 2026-03-15
+- **Fix: Bimanual teleoperation — calibration ID and path mismatch** — Bimanual teleoperation was crashing because (1) commands passed per-arm IDs instead of lerobot's expected base IDs, and (2) calibration files were stored under `bi_so101_*` directories instead of the `so101_*` directories that sub-arms actually look in. Root cause: lerobot's bimanual wrappers create `SO101Follower`/`SO101Leader` sub-arm instances that derive IDs as `{base}_left`/`{base}_right` and look for calibration files in `so101_follower/`/`so101_leader/`.
+  - Replaced 4 per-arm ID fields (`left_follower_id`, etc.) with 2 base IDs (`follower_id`, `leader_id`) in `BimanualConfig`
+  - Commands now pass `--robot.id={base}` and `--teleop.id={base}` matching lerobot docs
+  - `getCalibrationPaths()` now uses `so101_follower`/`so101_leader` (sub-arm types)
+  - Backend `list_missing_calibrations` and `get_calibration_status` updated to derive sub-arm IDs from base
+  - Modified: `backend/models/config.py`, `backend/api/teleoperation.py`, `backend/api/recording.py`, `backend/api/calibration.py`, `backend/services/calibration_service.py`, `frontend/lib/wizard-types.ts`
+- **Enhancement: Bimanual calibration naming validation** — Calibration step now validates that left/right arm pairs share the same base ID prefix with `_left`/`_right` suffixes. Shows info alert explaining the naming rule, and validation errors when names don't match. Base IDs are derived automatically from the calibration names via `validateBimanualCalibrationNames()`. Next button and teleoperation/recording are blocked until validation passes.
+  - Modified: `frontend/lib/wizard-types.ts`, `frontend/components/wizard/wizard-provider.tsx`, `frontend/components/wizard/steps/calibration-step.tsx`, `frontend/lib/services.ts`, `frontend/components/wizard/steps/teleoperate-step.tsx`
+- **Enhancement: Teleoperation error diagnostics** — When teleoperation crashes, the UI now parses logs for common failures (calibration mismatch, no motor movement, port access denied, device not found) and shows an actionable amber alert with diagnosis and suggested fix.
+  - Modified: `frontend/components/wizard/steps/teleoperate-step.tsx`
+
 ### 2026-03-07
 - **Feature: Configurable camera FPS and resolution** — Added FPS and resolution dropdowns to the Record step with recommended defaults (30 fps, 640×480). Options: FPS 15/24/30/60, resolution 320×240/640×480/1280×720/1920×1080. Values flow through `saveConfig` to the backend camera config instead of being hardcoded.
   - Modified: `frontend/lib/wizard-types.ts` (added `cameraFps`, `cameraWidth`, `cameraHeight` to `RecordingConfig`)
@@ -268,3 +280,4 @@ src/lerobot/webui/
         ├── mock-data.ts
         └── utils.ts
 ```
+

@@ -20,6 +20,7 @@ import {
   INITIAL_RECORDING_CONFIG,
   SINGLE_PORT_ROLES,
   BIMANUAL_PORT_ROLES,
+  validateBimanualCalibrationNames,
 } from "@/lib/wizard-types";
 
 // Actions
@@ -67,12 +68,21 @@ function computeCompletedSteps(state: WizardState): boolean[] {
       state.robotMode === "single"
         ? ["follower", "leader"]
         : ["left_follower", "right_follower", "left_leader", "right_leader"];
-    completed[3] = calRoles.every((role) => {
+    const allSelected = calRoles.every((role) => {
       const sel = state.calibrationSelections[role];
       if (sel === undefined || sel === null) return false;
       if (sel === "new") return (state.newCalibrationNames[role] || "").trim() !== "";
       return true;
     });
+    if (state.robotMode === "bimanual") {
+      const validation = validateBimanualCalibrationNames(
+        state.calibrationSelections,
+        state.newCalibrationNames,
+      );
+      completed[3] = allSelected && validation.valid;
+    } else {
+      completed[3] = allSelected;
+    }
   }
 
   // Steps 4-5: complete once the user has visited them

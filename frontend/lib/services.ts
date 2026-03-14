@@ -1,4 +1,5 @@
 import type { PortInfo, CameraInfo, StartResponse, RecordingConfig, WizardState } from "./wizard-types";
+import { validateBimanualCalibrationNames } from "./wizard-types";
 
 const USE_MOCK = false;
 
@@ -184,6 +185,11 @@ export const services = {
     const calId = (file: string | null | undefined) =>
       file && file !== "new" ? file.replace(/\.json$/, "") : null;
 
+    // For bimanual mode, derive the base IDs from the calibration file names
+    const bimanualValidation = mode === "bimanual"
+      ? validateBimanualCalibrationNames(state.calibrationSelections, state.newCalibrationNames)
+      : null;
+
     const config =
       mode === "bimanual"
         ? {
@@ -193,10 +199,8 @@ export const services = {
               left_leader_port: state.portAssignments.left_leader || null,
               right_follower_port: state.portAssignments.right_follower || null,
               right_leader_port: state.portAssignments.right_leader || null,
-              left_follower_id: calId(state.calibrationSelections.left_follower),
-              left_leader_id: calId(state.calibrationSelections.left_leader),
-              right_follower_id: calId(state.calibrationSelections.right_follower),
-              right_leader_id: calId(state.calibrationSelections.right_leader),
+              follower_id: bimanualValidation?.followerBaseId || "bimanual_follower",
+              leader_id: bimanualValidation?.leaderBaseId || "bimanual_leader",
               cameras,
             },
           }

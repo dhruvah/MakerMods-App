@@ -26,3 +26,5 @@ webui_config.json
 # Build
 *.tsbuildinfo
 next-env.d.ts
+
+outputs/

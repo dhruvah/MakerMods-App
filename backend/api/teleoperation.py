@@ -17,16 +17,20 @@ def build_teleoperation_command(config, display_data: bool = True) -> list[str]:
     """Build teleoperation command from config."""
     if config.mode == "bimanual":
         bi = config.bimanual
+        # lerobot's bimanual wrappers derive sub-arm IDs by appending _left/_right
+        # to the base id (e.g. id="follower" → left_id="follower_left").
+        # The config stores per-arm calibration IDs, so we use the follower_id
+        # field as the base id passed to --robot.id / --teleop.id.
         return [
             "lerobot-teleoperate",
             "--robot.type=bi_so101_follower",
             f"--robot.left_arm_port={bi.left_follower_port}",
             f"--robot.right_arm_port={bi.right_follower_port}",
-            f"--robot.id={bi.left_follower_id or 'bimanual_follower'}",
+            f"--robot.id={bi.follower_id or 'bimanual_follower'}",
             "--teleop.type=bi_so101_leader",
             f"--teleop.left_arm_port={bi.left_leader_port}",
             f"--teleop.right_arm_port={bi.right_leader_port}",
-            f"--teleop.id={bi.left_leader_id or 'bimanual_leader'}",
+            f"--teleop.id={bi.leader_id or 'bimanual_leader'}",
             f"--display_data={str(display_data).lower()}",
         ]
     else:

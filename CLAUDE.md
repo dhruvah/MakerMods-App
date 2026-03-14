@@ -68,8 +68,51 @@ npm run dev
 
 ## Development notes
 
-- When implementing a new feature or fixing a bug, update `PROGRESS.md` with a dated changelog entry
+- **IMPORTANT**: After every feature request, bug fix, or code revamp, update `PROGRESS.md` with a dated changelog entry describing what changed and which files were modified. This is mandatory for every PR/commit.
 - Backend wraps lerobot CLI commands via subprocess — zero changes to lerobot core code
-- Robot types: `so101_follower`, `bi_so101_follower`, `so101_leader`, `bi_so101_leader`
-- Calibration files live at `~/.cache/huggingface/lerobot/calibration/{robots|teleoperators}/{type}/{id}.json`
 - Don't cast Pydantic-derived interfaces with `as Record<string, unknown>` — use spread operator instead
+
+## Bimanual mode — how IDs and calibration work
+
+This is critical to understand. Lerobot's bimanual wrappers (`bi_so101_follower`, `bi_so101_leader`) use a **base ID** convention:
+
+### ID derivation
+- Commands use `--robot.id={base}` and `--teleop.id={base}` (e.g. `--robot.id=bimanual_follower`)
+- Lerobot internally creates two sub-arm instances (`SO101Follower`/`SO101Leader`) with IDs `{base}_left` and `{base}_right`
+- Example: `--robot.id=bimanual_follower` → sub-arms `bimanual_follower_left` and `bimanual_follower_right`
+- Optional overrides: `--robot.left_id` / `--robot.right_id` bypass the derivation
+
+### Calibration file storage
+- Sub-arms are `SO101Follower`/`SO101Leader` (NOT `BiSO101Follower`), so calibration files go under the **sub-arm type directory**, not the wrapper type:
+  - `~/.cache/huggingface/lerobot/calibration/robots/so101_follower/{base}_left.json`
+  - `~/.cache/huggingface/lerobot/calibration/robots/so101_follower/{base}_right.json`
+  - `~/.cache/huggingface/lerobot/calibration/teleoperators/so101_leader/{base}_left.json`
+  - `~/.cache/huggingface/lerobot/calibration/teleoperators/so101_leader/{base}_right.json`
+- **NOT** under `bi_so101_follower/` or `bi_so101_leader/` — those directories are unused
+
+### How the UI handles this
+- Backend `BimanualConfig` stores `follower_id` and `leader_id` (base IDs)
+- Frontend calibration step lets users name each arm independently, but validates that left/right pairs share the same prefix with `_left`/`_right` suffixes
+- `validateBimanualCalibrationNames()` in `wizard-types.ts` extracts the base ID from the naming pattern
+- `saveConfig()` sends the derived base IDs to the backend
+- Teleoperation/recording commands pass `--robot.id={follower_id}` and `--teleop.id={leader_id}`
+
+### Lerobot CLI examples (for reference)
+```bash
+# Calibrate bimanual follower
+lerobot-calibrate --robot.type=bi_so101_follower --robot.id=bimanual_follower \
+  --robot.left_arm_port=/dev/tty.usbmodemXXXX --robot.right_arm_port=/dev/tty.usbmodemYYYY
+
+# Teleoperate bimanual
+lerobot-teleoperate --robot.type=bi_so101_follower --robot.id=bimanual_follower \
+  --robot.left_arm_port=... --robot.right_arm_port=... \
+  --teleop.type=bi_so101_leader --teleop.id=bimanual_leader \
+  --teleop.left_arm_port=... --teleop.right_arm_port=...
+
+# Record bimanual dataset
+lerobot-record --robot.type=bi_so101_follower --robot.id=bimanual_follower \
+  --robot.left_arm_port=... --robot.right_arm_port=... \
+  --teleop.type=bi_so101_leader --teleop.id=bimanual_leader \
+  --teleop.left_arm_port=... --teleop.right_arm_port=... \
+  --dataset.repo_id=user/dataset --dataset.single_task="task" --dataset.num_episodes=50
+```

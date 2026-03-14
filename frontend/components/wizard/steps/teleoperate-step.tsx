@@ -20,6 +20,7 @@ import { LogViewer } from "@/components/common/log-viewer";
 import { useMotorState, MotorPanel, CameraFeedPanel } from "@/components/common/robot-display";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { services } from "@/lib/services";
+import { validateBimanualCalibrationNames } from "@/lib/wizard-types";
 import { useWizard } from "../wizard-provider";
 import { StepCard } from "../step-card";
 
@@ -215,21 +216,24 @@ export function TeleoperateStep() {
 
         {/* Error state */}
         {isError && (
-          <div className="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950">
-            <XCircle className="h-5 w-5 text-red-600 dark:text-red-400 shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-red-800 dark:text-red-200">
-                Teleoperation failed
-              </p>
-              {errorMsg && (
-                <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">
-                  {errorMsg}
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950">
+              <XCircle className="h-5 w-5 text-red-600 dark:text-red-400 shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-red-800 dark:text-red-200">
+                  Teleoperation failed
                 </p>
-              )}
+                {errorMsg && (
+                  <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">
+                    {errorMsg}
+                  </p>
+                )}
+              </div>
+              <Button variant="outline" size="sm" onClick={handleDismiss}>
+                Dismiss
+              </Button>
             </div>
-            <Button variant="outline" size="sm" onClick={handleDismiss}>
-              Dismiss
-            </Button>
+            <ErrorDiagnostics logs={logs} />
           </div>
         )}
 
@@ -285,6 +289,87 @@ export function TeleoperateStep() {
   );
 }
 
+function diagnoseFromLogs(logs: string[]): {
+  title: string;
+  description: string;
+  suggestion: string;
+} | null {
+  const joined = logs.join("\n");
+
+  if (joined.includes("same min and max values")) {
+    const motorMatch = joined.match(
+      /Some motors have the same min and max values:\n([\s\S]*?)(?:\n\[|$)/
+    );
+    const motors = motorMatch?.[1] ?? "unknown motors";
+    return {
+      title: "Calibration failed — no motor movement detected",
+      description: `During automatic re-calibration, the following motors were not moved: ${motors.replace(/['\[\]\n]/g, "").trim()}. All positions stayed at the same value.`,
+      suggestion:
+        "Go back to the Calibration step and re-calibrate the affected arm. Make sure to move each joint through its full range of motion during the recording phase.",
+    };
+  }
+
+  if (
+    joined.includes("Mismatch between calibration values") ||
+    joined.includes("no calibration file found")
+  ) {
+    const armMatch = joined.match(
+      /Running calibration of (\S+)/
+    );
+    const arm = armMatch?.[1] ?? "an arm";
+    return {
+      title: "Calibration mismatch or missing",
+      description: `The calibration file for "${arm}" doesn't match the values stored in the motor, or no calibration file was found. This triggers an interactive re-calibration that cannot run from the UI.`,
+      suggestion:
+        "Go back to the Calibration step and re-calibrate this arm. This will update both the file and the motor's internal values.",
+    };
+  }
+
+  if (joined.includes("Permission denied") || joined.includes("could not open port")) {
+    return {
+      title: "Port access denied",
+      description:
+        "The system could not open the serial port. Another process may be using it, or the device was disconnected.",
+      suggestion:
+        "Check that all USB cables are connected, and that no other application is using the ports. You may need to unplug and re-plug the device.",
+    };
+  }
+
+  if (joined.includes("FileNotFoundError") && joined.includes("/dev/")) {
+    return {
+      title: "Device not found",
+      description:
+        "A configured serial port no longer exists. The device may have been disconnected.",
+      suggestion:
+        "Go back to the Ports step and re-scan for connected devices.",
+    };
+  }
+
+  return null;
+}
+
+function ErrorDiagnostics({ logs }: { logs: string[] }) {
+  const diag = diagnoseFromLogs(logs);
+  if (!diag) return null;
+
+  return (
+    <Alert className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950">
+      <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+      <AlertDescription className="space-y-1.5">
+        <p className="font-medium text-amber-800 dark:text-amber-200">
+          {diag.title}
+        </p>
+        <p className="text-xs text-amber-700 dark:text-amber-300">
+          {diag.description}
+        </p>
+        <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
+          {diag.suggestion}
+        </p>
+      </AlertDescription>
+    </Alert>
+  );
+}
+
 function buildSummary(
   state: ReturnType<typeof import("../wizard-provider").useWizard>["state"]
 ): { label: string; value: string }[] {
@@ -312,6 +397,19 @@ function buildSummary(
       label: "Cameras",
       value: selectedCams.map((c) => c.name).join(", "),
     });
+  }
+
+  if (state.robotMode === "bimanual") {
+    const v = validateBimanualCalibrationNames(
+      state.calibrationSelections,
+      state.newCalibrationNames,
+    );
+    if (v.followerBaseId) {
+      items.push({ label: "follower id", value: v.followerBaseId });
+    }
+    if (v.leaderBaseId) {
+      items.push({ label: "leader id", value: v.leaderBaseId });
+    }
   }
 
   for (const [role, file] of Object.entries(state.calibrationSelections)) {

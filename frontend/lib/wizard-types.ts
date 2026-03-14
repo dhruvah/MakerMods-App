@@ -61,7 +61,7 @@ export interface WizardState {
   // Step 3: Calibration
   calibrationFiles: Record<string, string[]>; // "robots/so101_follower" → filenames
   calibrationSelections: Record<string, string | null>; // role → filename or "new" or null
-  newCalibrationNames: Record<string, string>; // role → user-entered name for new calibration
+  newCalibrationNames: Record<string, string>; // role → calibration name (must follow {base}_left / {base}_right for bimanual)
 
   // Step 4: Teleoperation
   teleStepVisited: boolean;
@@ -97,11 +97,14 @@ export function getCalibrationPaths(mode: RobotMode): { role: string; category: 
       { role: "leader", category: "teleoperators", robotType: "so101_leader" },
     ];
   }
+  // Bimanual wrappers (bi_so101_follower / bi_so101_leader) create SO101Follower
+  // and SO101Leader sub-arm instances internally, which look for calibration files
+  // under so101_follower / so101_leader — NOT bi_so101_*.
   return [
-    { role: "left_follower", category: "robots", robotType: "bi_so101_follower" },
-    { role: "right_follower", category: "robots", robotType: "bi_so101_follower" },
-    { role: "left_leader", category: "teleoperators", robotType: "bi_so101_leader" },
-    { role: "right_leader", category: "teleoperators", robotType: "bi_so101_leader" },
+    { role: "left_follower", category: "robots", robotType: "so101_follower" },
+    { role: "right_follower", category: "robots", robotType: "so101_follower" },
+    { role: "left_leader", category: "teleoperators", robotType: "so101_leader" },
+    { role: "right_leader", category: "teleoperators", robotType: "so101_leader" },
   ];
 }
 
@@ -146,3 +149,104 @@ export const INITIAL_STATE: WizardState = {
   recordingConfig: { ...INITIAL_RECORDING_CONFIG },
   recordProcessId: null,
 };
+
+// ─── Bimanual calibration naming validation ─────────────────────────────────
+
+export interface BimanualValidationResult {
+  valid: boolean;
+  followerBaseId: string | null;
+  leaderBaseId: string | null;
+  errors: string[];
+}
+
+/**
+ * Resolve the effective calibration name for a role.
+ * Returns null if the role has no selection yet.
+ */
+function resolveCalName(
+  role: string,
+  selections: Record<string, string | null>,
+  newNames: Record<string, string>,
+): string | null {
+  const sel = selections[role];
+  if (sel === undefined || sel === null) return null;
+  if (sel === "new") {
+    const name = (newNames[role] || "").trim();
+    return name || null;
+  }
+  return sel.replace(/\.json$/, "");
+}
+
+/**
+ * Validate that bimanual left/right calibration names share a common prefix
+ * and use the correct _left / _right suffixes.
+ *
+ * Returns early with valid=false and empty errors when selections are incomplete
+ * (user hasn't filled everything yet — no premature error messages).
+ */
+export function validateBimanualCalibrationNames(
+  selections: Record<string, string | null>,
+  newNames: Record<string, string>,
+): BimanualValidationResult {
+  const result: BimanualValidationResult = {
+    valid: false,
+    followerBaseId: null,
+    leaderBaseId: null,
+    errors: [],
+  };
+
+  const pairs: Array<{
+    label: string;
+    leftRole: string;
+    rightRole: string;
+    setBase: (id: string) => void;
+  }> = [
+    {
+      label: "Follower",
+      leftRole: "left_follower",
+      rightRole: "right_follower",
+      setBase: (id) => { result.followerBaseId = id; },
+    },
+    {
+      label: "Leader",
+      leftRole: "left_leader",
+      rightRole: "right_leader",
+      setBase: (id) => { result.leaderBaseId = id; },
+    },
+  ];
+
+  for (const pair of pairs) {
+    const leftName = resolveCalName(pair.leftRole, selections, newNames);
+    const rightName = resolveCalName(pair.rightRole, selections, newNames);
+
+    // Not ready yet — no errors, just not valid
+    if (!leftName || !rightName) return result;
+
+    if (!leftName.endsWith("_left")) {
+      result.errors.push(
+        `Left ${pair.label} calibration name "${leftName}" must end with "_left" (e.g. "my_robot_left").`
+      );
+    }
+    if (!rightName.endsWith("_right")) {
+      result.errors.push(
+        `Right ${pair.label} calibration name "${rightName}" must end with "_right" (e.g. "my_robot_right").`
+      );
+    }
+
+    if (result.errors.length > 0) continue;
+
+    const leftPrefix = leftName.slice(0, -"_left".length);
+    const rightPrefix = rightName.slice(0, -"_right".length);
+
+    if (leftPrefix !== rightPrefix) {
+      result.errors.push(
+        `${pair.label} calibration names must share the same base prefix — got "${leftPrefix}" (left) vs "${rightPrefix}" (right).`
+      );
+    } else {
+      pair.setBase(leftPrefix);
+    }
+  }
+
+  result.valid = result.errors.length === 0 && result.followerBaseId !== null && result.leaderBaseId !== null;
+  return result;
+}

@@ -39,12 +39,18 @@ import { useWizard } from "../wizard-provider";
 import { StepCard } from "../step-card";
 
 export function InferenceStep() {
-  const { state, dispatch, allPriorStepsComplete } = useWizard();
+  const { state, dispatch } = useWizard();
   const [starting, setStarting] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const priorComplete = allPriorStepsComplete(6);
+  // Inference only requires hardware setup (steps 0-3: robot type, ports, cameras, calibration)
+  // It does NOT require teleoperate (step 4) or record (step 5) to have been visited
+  const hardwareReady =
+    state.completedSteps[0] &&
+    state.completedSteps[1] &&
+    state.completedSteps[2] &&
+    state.completedSteps[3];
   const isRunning = state.inferenceProcessId !== null;
 
   const { logs, isConnected, clearLogs } = useWebSocket(
@@ -109,7 +115,7 @@ export function InferenceStep() {
   }, [state.inferenceProcessId, startPolling, stopPolling]);
 
   const canStart =
-    priorComplete &&
+    hardwareReady &&
     config.policyPath.trim() !== "" &&
     config.repoId.trim() !== "" &&
     config.task.trim() !== "" &&
@@ -162,12 +168,12 @@ export function InferenceStep() {
       showNext={false}
     >
       <div className="space-y-5">
-        {!priorComplete && (
+        {!hardwareReady && (
           <Alert>
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription>
-              Previous steps are not all completed. Complete them before running
-              inference.
+              Robot type, ports, cameras, and calibration must be configured
+              before running inference.
             </AlertDescription>
           </Alert>
         )}

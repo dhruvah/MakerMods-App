@@ -1,6 +1,5 @@
 """HuggingFace service for authentication and repo management."""
 
-import subprocess
 from pathlib import Path
 from typing import List, Optional
 
@@ -11,34 +10,28 @@ from backend.models.system import HFLoginStatus
 
 
 class HuggingFaceService:
-    """Service for HuggingFace CLI integration."""
+    """Service for HuggingFace Hub integration."""
 
     def __init__(self):
         """Initialize HuggingFaceService."""
         self.api = HfApi()
 
     def check_login(self) -> HFLoginStatus:
-        """Check if user is logged into HuggingFace CLI.
+        """Check if user is authenticated with HuggingFace Hub.
+
+        Uses the huggingface_hub Python API (same method lerobot uses to upload
+        datasets) rather than the CLI binary, so it works regardless of whether
+        huggingface-cli is on PATH.
 
         Returns:
-            HFLoginStatus with login information.
+            HFLoginStatus with authentication information.
         """
         try:
-            result = subprocess.run(
-                ["huggingface-cli", "whoami"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-
-            if result.returncode == 0:
-                username = result.stdout.strip()
-                return HFLoginStatus(is_logged_in=True, username=username)
-
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass
-
-        return HFLoginStatus(is_logged_in=False, username=None)
+            info = self.api.whoami()
+            username = info.get("name") if isinstance(info, dict) else None
+            return HFLoginStatus(is_logged_in=True, username=username)
+        except Exception:
+            return HFLoginStatus(is_logged_in=False, username=None)
 
     def list_repos(self, username: str) -> List[HFRepoInfo]:
         """List user's dataset repositories.
@@ -80,22 +73,20 @@ class HuggingFaceService:
         repo_id = f"{username}/{repo_name}"
 
         try:
-            # Use huggingface-cli to create repo
-            cmd = ["huggingface-cli", "repo", "create", repo_id, "--type", "dataset"]
-            if private:
-                cmd.append("--private")
+            self.api.create_repo(
+                repo_id=repo_id,
+                repo_type="dataset",
+                private=private,
+                exist_ok=True,
+            )
+            return HFRepoInfo(
+                repo_id=repo_id,
+                repo_type="dataset",
+                private=private,
+                url=f"https://huggingface.co/datasets/{repo_id}",
+            )
 
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-
-            if result.returncode == 0:
-                return HFRepoInfo(
-                    repo_id=repo_id,
-                    repo_type="dataset",
-                    private=private,
-                    url=f"https://huggingface.co/datasets/{repo_id}",
-                )
-
-        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        except Exception as e:
             print(f"Error creating repo: {e}")
 
         return None

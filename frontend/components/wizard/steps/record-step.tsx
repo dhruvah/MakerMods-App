@@ -203,6 +203,11 @@ export function RecordStep() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [repoIdWarning, setRepoIdWarning] = useState(false);
+  const [hfStatus, setHfStatus] = useState<{
+    is_logged_in: boolean;
+    username: string | null;
+  } | null>(null);
+  const [hfChecking, setHfChecking] = useState(true);
   const priorComplete = allPriorStepsComplete(5);
   const isRunning = state.recordProcessId !== null;
 
@@ -266,6 +271,17 @@ export function RecordStep() {
     return stopPolling;
   }, [state.recordProcessId, startPolling, stopPolling]);
 
+  // Check HuggingFace auth status on mount
+  useEffect(() => {
+    let cancelled = false;
+    setHfChecking(true);
+    services.checkHFStatus()
+      .then((status) => { if (!cancelled) setHfStatus(status); })
+      .catch(() => { if (!cancelled) setHfStatus({ is_logged_in: false, username: null }); })
+      .finally(() => { if (!cancelled) setHfChecking(false); });
+    return () => { cancelled = true; };
+  }, []);
+
   // Check if repo ID was used before
   useEffect(() => {
     if (config.repoId.trim() === "") {
@@ -275,8 +291,11 @@ export function RecordStep() {
     setRepoIdWarning(getSavedRepoIds().includes(config.repoId.trim()));
   }, [config.repoId]);
 
+  const hfReady = hfStatus?.is_logged_in === true;
+
   const canStart =
     priorComplete &&
+    hfReady &&
     config.repoId.trim() !== "" &&
     config.task.trim() !== "" &&
     config.numEpisodes > 0 &&
@@ -344,16 +363,45 @@ export function RecordStep() {
           </Alert>
         )}
 
+        {/* HuggingFace auth status */}
+        {hfChecking && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Checking HuggingFace authentication…
+          </div>
+        )}
+
+        {!hfChecking && hfStatus && !hfStatus.is_logged_in && (
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              <span className="font-medium">Not logged in to HuggingFace.</span>{" "}
+              Recording uploads datasets to HuggingFace Hub. Log in by running:{" "}
+              <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">
+                huggingface-cli login
+              </code>{" "}
+              in your terminal, then refresh this page.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {!hfChecking && hfStatus && hfStatus.is_logged_in && hfStatus.username && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+            Logged in to HuggingFace as <span className="font-medium text-foreground">{hfStatus.username}</span>
+          </div>
+        )}
+
         {/* Form fields */}
         <div className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="repo-id">HuggingFace Repo ID</Label>
             <Input
               id="repo-id"
-              placeholder="username/dataset_name"
+              placeholder={hfStatus?.username ? `${hfStatus.username}/dataset_name` : "username/dataset_name"}
               value={config.repoId}
               onChange={(e) => updateConfig({ repoId: e.target.value })}
-              disabled={isRunning}
+              disabled={isRunning || !hfReady}
             />
             {repoIdWarning && (
               <p className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">

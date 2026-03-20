@@ -307,6 +307,16 @@ export const services = {
     });
   },
 
+  checkHFStatus: async (): Promise<{
+    is_logged_in: boolean;
+    username: string | null;
+  }> => {
+    if (USE_MOCK) {
+      return { is_logged_in: true, username: "mock_user" };
+    }
+    return fetchAPI("/api/huggingface/whoami");
+  },
+
   stopInference: async (processId: string): Promise<void> => {
     if (USE_MOCK) return;
     await fetchAPI(`/api/inference/stop/${processId}`, { method: "POST" });

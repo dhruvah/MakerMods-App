@@ -57,17 +57,16 @@ class CalibrationService:
 
         if config.mode == "bimanual":
             # Check bimanual devices
-            # Bimanual wrappers create SO101Follower/SO101Leader sub-arms that
-            # store calibration under so101_follower / so101_leader directories.
+            # Bimanual calibration files are stored under bi_so101_follower / bi_so101_leader.
             # Sub-arm IDs are derived as {base_id}_left and {base_id}_right.
             bi = config.bimanual
             follower_base = bi.follower_id or "bimanual_follower"
             leader_base = bi.leader_id or "bimanual_leader"
             devices = [
-                ("robot", f"{follower_base}_left", "so101_follower", bi.left_follower_port),
-                ("robot", f"{follower_base}_right", "so101_follower", bi.right_follower_port),
-                ("teleoperator", f"{leader_base}_left", "so101_leader", bi.left_leader_port),
-                ("teleoperator", f"{leader_base}_right", "so101_leader", bi.right_leader_port),
+                ("robot", f"{follower_base}_left", "bi_so101_follower", bi.left_follower_port),
+                ("robot", f"{follower_base}_right", "bi_so101_follower", bi.right_follower_port),
+                ("teleoperator", f"{leader_base}_left", "bi_so101_leader", bi.left_leader_port),
+                ("teleoperator", f"{leader_base}_right", "bi_so101_leader", bi.right_leader_port),
             ]
 
             for device_type, device_id, robot_type, port in devices:

@@ -83,6 +83,17 @@ export const services = {
     );
   },
 
+  openCalibrationFolder: async (
+    category: string,
+    robotType: string
+  ): Promise<void> => {
+    if (USE_MOCK) return;
+    await fetchAPI(
+      `/api/calibration/open-folder?category=${encodeURIComponent(category)}&robot_type=${encodeURIComponent(robotType)}`,
+      { method: "POST" }
+    );
+  },
+
   startTeleoperation: async (
     displayData: boolean
   ): Promise<StartResponse> => {
@@ -266,6 +277,33 @@ export const services = {
         episode_time_s: config.episodeTimeS,
         display_data: config.displayData,
       }),
+    });
+  },
+
+  scanMotors: async (port: string): Promise<{
+    port: string;
+    connected: boolean;
+    baudrate: number | null;
+    error: string | null;
+    hint: string | null;
+    motors: Array<{
+      id: number;
+      name: string;
+      responding: boolean;
+      model_number: number | null;
+      position: number | null;
+      speed: number | null;
+      load: number | null;
+      voltage: number | null;
+      temperature: number | null;
+      move: number | null;
+    }>;
+    log: string[];
+  }> => {
+    return fetchAPI("/api/debug/scan-motors", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ port }),
     });
   },
 

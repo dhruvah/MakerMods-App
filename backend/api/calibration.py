@@ -1,14 +1,16 @@
 """Calibration API endpoints."""
 
 import asyncio
-import uuid
-from typing import Dict, List, Optional
+import platform
+import subprocess
+from pathlib import Path
+from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from backend.models.system import CalibrationStatus
-from backend.services.auto_calibration import AutoCalibrationService, CalibrationProgress
+from backend.services.auto_calibration import AutoCalibrationService
 from backend.services.calibration_service import CalibrationService
 from backend.services.config_manager import ConfigManager
 from backend.services.manual_calibration import ManualCalibrationService, MOTOR_IDS
@@ -19,9 +21,6 @@ calibration_service = CalibrationService()
 config_manager = ConfigManager()
 auto_cal_service = AutoCalibrationService()
 manual_cal_service = ManualCalibrationService()
-
-# Track active auto-calibration sessions
-_active_sessions: Dict[str, asyncio.Task] = {}
 
 
 class CalibrationStartRequest(BaseModel):
@@ -54,6 +53,31 @@ async def list_calibration_files(category: str, robot_type: str):
         raise HTTPException(status_code=500, detail=f"Failed to list calibration files: {e}")
 
 
+@router.post("/open-folder")
+async def open_calibration_folder(category: str, robot_type: str):
+    """Open the calibration folder in the system file manager.
+
+    Args:
+        category: "robots" or "teleoperators".
+        robot_type: Robot type (e.g., "so101_follower", "so101_leader").
+    """
+    folder = Path.home() / ".cache" / "huggingface" / "lerobot" / "calibration" / category / robot_type
+    folder.mkdir(parents=True, exist_ok=True)
+
+    system = platform.system()
+    try:
+        if system == "Darwin":
+            subprocess.Popen(["open", str(folder)])
+        elif system == "Windows":
+            subprocess.Popen(["explorer", str(folder)])
+        else:
+            subprocess.Popen(["xdg-open", str(folder)])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to open folder: {e}")
+
+    return {"message": f"Opened {folder}", "path": str(folder)}
+
+
 @router.get("/missing", response_model=List[CalibrationStatus])
 async def get_missing_calibrations():
     """Get list of devices missing calibration based on current config."""
@@ -77,10 +101,10 @@ async def get_calibration_status():
             follower_base = bi.follower_id or "bimanual_follower"
             leader_base = bi.leader_id or "bimanual_leader"
             devices = [
-                ("robot", f"{follower_base}_left", "so101_follower", bi.left_follower_port),
-                ("robot", f"{follower_base}_right", "so101_follower", bi.right_follower_port),
-                ("teleoperator", f"{leader_base}_left", "so101_leader", bi.left_leader_port),
-                ("teleoperator", f"{leader_base}_right", "so101_leader", bi.right_leader_port),
+                ("robot", f"{follower_base}_left", "bi_so101_follower", bi.left_follower_port),
+                ("robot", f"{follower_base}_right", "bi_so101_follower", bi.right_follower_port),
+                ("teleoperator", f"{leader_base}_left", "bi_so101_leader", bi.left_leader_port),
+                ("teleoperator", f"{leader_base}_right", "bi_so101_leader", bi.right_leader_port),
             ]
         else:
             # Check single arm devices
@@ -136,217 +160,78 @@ async def stop_calibration(process_id: str):
 
 
 # --- Auto-calibration endpoints ---
+# Runs lerobot_measure_feetech_ranges.py as a subprocess via ProcessManager.
+# Logs are streamed via the existing /ws/logs/{process_id} WebSocket.
 
 
-class AutoCalibrationRequest(BaseModel):
-    """Request to start auto-calibration for a motor."""
+class AutoCalibrationStartRequest(BaseModel):
+    """Request to start auto-calibration."""
 
     port: str
-    motor_name: str
-    device_type: str = "robot"  # "robot" or "teleoperator"
-    robot_type: str = "so101_follower"
     device_id: str = "left_follower"
-    step_size: Optional[int] = None
 
 
-class AutoCalibrationResult(BaseModel):
-    """Result of auto-calibration."""
+class AutoCalibrationStartResponse(BaseModel):
+    """Response from starting auto-calibration."""
 
-    session_id: str
-    motor_name: str
-    calibration: Optional[dict] = None
-    saved_path: Optional[str] = None
-    error: Optional[str] = None
+    process_id: str
+    message: str
 
 
-@router.post("/auto/start", response_model=AutoCalibrationResult)
-async def start_auto_calibration(request: AutoCalibrationRequest):
-    """Start auto-calibration for a single motor.
+@router.post("/auto/start", response_model=AutoCalibrationStartResponse)
+async def start_auto_calibration(request: AutoCalibrationStartRequest):
+    """Start auto-calibration for an entire arm.
 
-    This directly controls the servo to find its physical limits.
-    The motor will move slowly in each direction until it detects a stall.
+    Runs lerobot_measure_feetech_ranges with --save to calibrate all 6 motors
+    and persist the result. Logs can be streamed via /ws/logs/{process_id}.
     """
-    session_id = str(uuid.uuid4())[:8]
-
     try:
-        result = await auto_cal_service.auto_calibrate_motor(
+        process_id = await auto_cal_service.start(
             port=request.port,
-            motor_name=request.motor_name,
-            step_size=request.step_size,
-        )
-
-        if result.get("cancelled"):
-            return AutoCalibrationResult(
-                session_id=session_id,
-                motor_name=request.motor_name,
-                error="Calibration was cancelled",
-            )
-
-        # Save to file
-        saved_path = auto_cal_service.save_calibration(
-            calibration_data=result,
-            device_type=request.device_type,
-            robot_type=request.robot_type,
             device_id=request.device_id,
         )
-
-        # Write to motor EEPROM
-        auto_cal_service.write_calibration_to_motors(
-            port=request.port,
-            calibration_data=result,
+        return AutoCalibrationStartResponse(
+            process_id=process_id,
+            message=f"Auto-calibration started for {request.device_id}",
         )
-
-        return AutoCalibrationResult(
-            session_id=session_id,
-            motor_name=request.motor_name,
-            calibration=result,
-            saved_path=str(saved_path),
-        )
-
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Auto-calibration failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start auto-calibration: {e}")
 
 
-@router.post("/auto/cancel")
-async def cancel_auto_calibration():
-    """Cancel any running auto-calibration."""
-    auto_cal_service.cancel()
-    return {"message": "Cancellation requested"}
+@router.post("/auto/stop/{process_id}")
+async def stop_auto_calibration(process_id: str):
+    """Stop a running auto-calibration process."""
+    success = await auto_cal_service.stop(process_id)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Process {process_id} not found")
+    return {"message": "Auto-calibration stopped"}
 
 
-@router.websocket("/auto/ws")
-async def auto_calibration_ws(websocket: WebSocket):
-    """WebSocket endpoint for auto-calibration with real-time progress.
+class AutoCalibrationCompleteRequest(BaseModel):
+    """Request to complete auto-calibration."""
 
-    Send a JSON message to start:
-    {
-        "port": "/dev/tty.usbmodemXXX",
-        "motor_name": "gripper",
-        "device_type": "robot",
-        "robot_type": "so101_follower",
-        "device_id": "left_follower"
-    }
+    category: str = "robots"
+    robot_type: str = "so101_follower"
 
-    Receives JSON progress messages:
-    {
-        "type": "progress",
-        "motor_name": "gripper",
-        "phase": "finding_min",
-        "current_position": 1234,
-        "range_min": null,
-        "range_max": null,
-        "progress_pct": 25.0
-    }
 
-    Final result message:
-    {
-        "type": "result",
-        "calibration": {...},
-        "saved_path": "/path/to/file.json"
-    }
+@router.post("/auto/complete/{device_id}")
+async def complete_auto_calibration(device_id: str, request: AutoCalibrationCompleteRequest):
+    """Post-process after auto-calibration completes.
+
+    Copies the calibration file from so_follower/ to the correct category/type
+    directory so the UI and lerobot SO101 wrappers can find it.
     """
-    await websocket.accept()
-
-    try:
-        # Wait for start command
-        data = await websocket.receive_json()
-        port = data["port"]
-        motor_name = data["motor_name"]
-        device_type = data.get("device_type", "robot")
-        robot_type = data.get("robot_type", "so101_follower")
-        device_id = data.get("device_id", "left_follower")
-        step_size = data.get("step_size")
-
-        # Progress callback that sends updates over WebSocket
-        async def send_progress(progress: CalibrationProgress):
-            try:
-                await websocket.send_json({
-                    "type": "progress",
-                    "motor_name": progress.motor_name,
-                    "phase": progress.phase,
-                    "current_position": progress.current_position,
-                    "range_min": progress.range_min,
-                    "range_max": progress.range_max,
-                    "progress_pct": progress.progress_pct,
-                })
-            except Exception:
-                pass
-
-        # We need a sync-compatible wrapper since the motor bus is synchronous
-        # but we want async WebSocket updates
-        progress_queue: asyncio.Queue[CalibrationProgress] = asyncio.Queue()
-
-        def on_progress(progress: CalibrationProgress):
-            progress_queue.put_nowait(progress)
-
-        # Run calibration in a background task
-        cal_task = asyncio.create_task(
-            auto_cal_service.auto_calibrate_motor(
-                port=port,
-                motor_name=motor_name,
-                on_progress=on_progress,
-                step_size=step_size,
-            )
+    dst = auto_cal_service.copy_to_so101_path(
+        device_id,
+        category=request.category,
+        robot_type=request.robot_type,
+    )
+    if dst is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Calibration file for '{device_id}' not found in so_follower/",
         )
-
-        # Forward progress updates while calibration runs
-        while not cal_task.done():
-            try:
-                progress = await asyncio.wait_for(progress_queue.get(), timeout=0.5)
-                await send_progress(progress)
-            except asyncio.TimeoutError:
-                # Check if client sent a cancel message
-                try:
-                    msg = await asyncio.wait_for(websocket.receive_json(), timeout=0.01)
-                    if msg.get("action") == "cancel":
-                        auto_cal_service.cancel()
-                        await websocket.send_json({"type": "cancelled"})
-                except (asyncio.TimeoutError, WebSocketDisconnect):
-                    pass
-
-        # Drain remaining progress messages
-        while not progress_queue.empty():
-            progress = progress_queue.get_nowait()
-            await send_progress(progress)
-
-        # Get result
-        result = await cal_task
-
-        if result.get("cancelled"):
-            await websocket.send_json({"type": "cancelled"})
-        else:
-            # Save calibration
-            saved_path = auto_cal_service.save_calibration(
-                calibration_data=result,
-                device_type=device_type,
-                robot_type=robot_type,
-                device_id=device_id,
-            )
-
-            # Write to motor EEPROM
-            auto_cal_service.write_calibration_to_motors(
-                port=port,
-                calibration_data=result,
-            )
-
-            await websocket.send_json({
-                "type": "result",
-                "calibration": result,
-                "saved_path": str(saved_path),
-            })
-
-    except WebSocketDisconnect:
-        auto_cal_service.cancel()
-    except Exception as e:
-        try:
-            await websocket.send_json({"type": "error", "message": str(e)})
-        except Exception:
-            pass
-    finally:
-        try:
-            await websocket.close()
-        except Exception:
-            pass
+    return {"message": "Calibration file copied", "path": str(dst)}
 
 
 # --- Manual calibration endpoint ---

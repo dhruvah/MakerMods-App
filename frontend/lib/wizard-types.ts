@@ -65,6 +65,7 @@ export interface StartResponse {
 export interface WizardState {
   currentStep: number; // 0-6
   completedSteps: boolean[];
+  debugMode: boolean;
 
   // Step 0: Robot Type
   robotMode: RobotMode | null;
@@ -122,14 +123,12 @@ export function getCalibrationPaths(mode: RobotMode): { role: string; category: 
       { role: "leader", category: "teleoperators", robotType: "so101_leader" },
     ];
   }
-  // Bimanual wrappers (bi_so101_follower / bi_so101_leader) create SO101Follower
-  // and SO101Leader sub-arm instances internally, which look for calibration files
-  // under so101_follower / so101_leader — NOT bi_so101_*.
+  // Bimanual wrappers store calibration files under bi_so101_follower / bi_so101_leader.
   return [
-    { role: "left_follower", category: "robots", robotType: "so101_follower" },
-    { role: "right_follower", category: "robots", robotType: "so101_follower" },
-    { role: "left_leader", category: "teleoperators", robotType: "so101_leader" },
-    { role: "right_leader", category: "teleoperators", robotType: "so101_leader" },
+    { role: "left_follower", category: "robots", robotType: "bi_so101_follower" },
+    { role: "right_follower", category: "robots", robotType: "bi_so101_follower" },
+    { role: "left_leader", category: "teleoperators", robotType: "bi_so101_leader" },
+    { role: "right_leader", category: "teleoperators", robotType: "bi_so101_leader" },
   ];
 }
 
@@ -170,6 +169,7 @@ export const INITIAL_RECORDING_CONFIG: RecordingConfig = {
 export const INITIAL_STATE: WizardState = {
   currentStep: 0,
   completedSteps: [false, false, false, false, false, false, false],
+  debugMode: false,
   robotMode: null,
   detectedPorts: [],
   portAssignments: {},

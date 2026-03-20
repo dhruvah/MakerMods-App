@@ -1,5 +1,15 @@
 # xLeRobot Web UI - Implementation Progress
 
+## Changelog
+
+### 2026-03-20
+- **fix**: Bimanual calibration paths now correctly use `bi_so101_follower`/`bi_so101_leader` folders instead of `so101_follower`/`so101_leader`. This affects file listing, status checks, auto-calibration copy, and manual calibration saves. Modified: `frontend/lib/wizard-types.ts`, `backend/services/calibration_service.py`, `backend/api/calibration.py`, `CLAUDE.md`.
+- **feat**: Auto-calibration logs are now hidden behind a collapsible "Logs" disclosure button instead of always showing. Modified: `frontend/components/wizard/steps/calibration-step.tsx`.
+- **fix**: Auto-calibration for leaders was saving to `robots/so101_follower/` instead of `teleoperators/so101_leader/`. The `copy_to_so101_path` method now accepts `category` and `robot_type` parameters, and the frontend passes the correct values through the API. Modified: `backend/services/auto_calibration.py`, `backend/api/calibration.py`, `frontend/hooks/use-auto-calibration.ts`, `frontend/components/wizard/steps/calibration-step.tsx`.
+- **feat**: "Open Folder" button in calibration step to reveal the calibration JSON folder in the system file manager for both follower and leader arms. New endpoint `POST /api/calibration/open-folder`. Modified: `backend/api/calibration.py`, `frontend/lib/services.ts`, `frontend/components/wizard/steps/calibration-step.tsx`.
+- **feat**: Debug page for hardware diagnostics — scan a port to see which of the 6 servos (IDs 1–6) are responding using raw `feetech-servo-sdk` (scservo_sdk). Reads position, speed, load, voltage, temperature, and moving flag per motor. Toggle via Bug icon in sidebar footer. Includes auto-refresh, log viewer, and error hints. New files: `backend/api/debug.py`, `backend/models/debug.py`, `frontend/components/wizard/steps/debug-panel.tsx`. Modified: `backend/main.py`, `frontend/lib/wizard-types.ts`, `frontend/lib/services.ts`, `frontend/components/wizard/wizard-provider.tsx`, `frontend/components/wizard/wizard-sidebar.tsx`, `frontend/components/wizard/wizard-layout.tsx`, `requirements.txt`.
+- **fix**: Clamp wiggle gripper positions to valid 0–4095 range to prevent `ValueError: Negative values are not allowed` when gripper is near position 0 (`backend/api/setup.py`)
+
 ## Architecture
 - **Frontend**: Next.js 16 (App Router) + shadcn/ui + Tailwind CSS v4
 - **Backend**: FastAPI (Python) + WebSocket for real-time logs
@@ -84,6 +94,17 @@ The frontend is a single-page wizard with 7 sequential steps. One centered card 
 ---
 
 ## Changelog
+
+### 2026-03-19
+- **Feature: Auto-calibration integration** — Integrated `lerobot_measure_feetech_ranges.py` into the UI as a new calibration option alongside manual calibration. When "New Calibration" is selected, users choose between Manual or Auto mode. Auto mode runs the full calibration script as a subprocess (init → unfold → calibrate all 6 motors → fold → save), streaming real-time logs to the UI. After completion, the calibration JSON is copied from `so_follower/` to `so101_follower/` so it's visible to the UI.
+  - Rewritten: `backend/services/auto_calibration.py` (runs lerobot script via ProcessManager subprocess)
+  - Modified: `backend/api/calibration.py` (replaced per-motor WebSocket endpoints with process-based start/stop/complete)
+  - Rewritten: `frontend/hooks/use-auto-calibration.ts` (process-based hook with log streaming via `/ws/logs/`)
+  - Modified: `frontend/components/wizard/steps/calibration-step.tsx` (added `AutoCalibrationPanel` with LogViewer, `CalibrationMethodPicker` manual/auto toggle)
+- **Feature: Linux/Jetson Nano serial port support** — Port scanner now detects platform (macOS vs Linux) and uses appropriate glob patterns (`cu.usbmodem*` for macOS, `ttyUSB*`/`ttyACM*` for Linux). Previously only macOS was supported.
+  - Modified: `backend/services/port_scanner.py`
+- **Fix: camera_scanner.py repo_root path resolution** — Fixed `repo_root` in `CameraScannerService.__init__` from 6 `.parent` calls (resolved far above repo) to 3 (correct repo root).
+  - Modified: `backend/services/camera_scanner.py`
 
 ### 2026-03-16
 - **Feature: Inference step (Step 7) — Run trained policies on the robot** — Added a new wizard step for running inference with trained policies. The robot is controlled autonomously by a policy (no teleoperator needed). Uses `lerobot-record` with `--policy.path` and without `--teleop.*` flags.

@@ -1,4 +1,4 @@
-import type { PortInfo, CameraInfo, StartResponse, RecordingConfig, InferenceConfig, WizardState } from "./wizard-types";
+import type { PortInfo, CameraInfo, StartResponse, RecordingConfig, InferenceConfig, TrainingConfig, WizardState } from "./wizard-types";
 import { validateBimanualCalibrationNames } from "./wizard-types";
 
 const USE_MOCK = false;
@@ -344,6 +344,92 @@ export const services = {
 
   getBaseStatus: async (): Promise<{ connected: boolean; port: string | null; speed_index: number }> => {
     return fetchAPI("/api/base-control/status");
+  },
+
+  // Training (Qualia)
+  getQualiaKeyStatus: async (): Promise<{ is_valid: boolean; message: string }> => {
+    if (USE_MOCK) return { is_valid: true, message: "Mock key valid" };
+    return fetchAPI("/api/training/key-status");
+  },
+
+  validateQualiaKey: async (apiKey: string): Promise<{ is_valid: boolean; message: string }> => {
+    if (USE_MOCK) return { is_valid: true, message: "Mock key valid" };
+    return fetchAPI("/api/training/validate-key", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ api_key: apiKey }),
+    });
+  },
+
+  listGPUInstances: async (): Promise<
+    Array<{
+      id: string;
+      name: string;
+      description: string;
+      gpu_description: string;
+      credits_per_hour: number;
+      specs: {
+        vcpus: number;
+        memory_gib: number;
+        storage_gib: number;
+        gpu_count: number;
+        gpu_type: string;
+      };
+      regions: string[];
+    }>
+  > => {
+    if (USE_MOCK) return [];
+    return fetchAPI("/api/training/instances");
+  },
+
+  startTraining: async (config: TrainingConfig): Promise<{
+    job_id: string;
+    project_id: string;
+    message: string;
+  }> => {
+    if (USE_MOCK) return { job_id: "mock-job", project_id: "mock-project", message: "Mock training started" };
+    return fetchAPI("/api/training/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        dataset_id: config.datasetId,
+        vla_type: config.vlaType,
+        model_id: config.modelId || null,
+        instance_type: config.instanceType,
+        batch_size: config.batchSize,
+        hours: config.hours,
+        output_model_name: config.outputModelName,
+        job_description: config.jobDescription,
+        camera_names: config.cameraNames,
+      }),
+    });
+  },
+
+  getTrainingStatus: async (jobId: string): Promise<{
+    job_id: string;
+    project_id: string;
+    status: string;
+    phase: string;
+    message: string;
+    output_model_id: string | null;
+  }> => {
+    if (USE_MOCK) return { job_id: jobId, project_id: "", status: "completed", phase: "completed", message: "", output_model_id: null };
+    return fetchAPI(`/api/training/status/${jobId}`);
+  },
+
+  cancelTraining: async (jobId: string): Promise<{
+    job_id: string;
+    status: string;
+    phase: string;
+    message: string;
+  }> => {
+    if (USE_MOCK) return { job_id: jobId, status: "cancelled", phase: "", message: "" };
+    return fetchAPI(`/api/training/cancel/${jobId}`, { method: "POST" });
+  },
+
+  getDatasetImageKeys: async (repoId: string): Promise<string[]> => {
+    if (USE_MOCK) return ["observation.images.front_cam"];
+    return fetchAPI(`/api/huggingface/dataset-image-keys?repo_id=${encodeURIComponent(repoId)}`);
   },
 
   getInferenceStatus: async (

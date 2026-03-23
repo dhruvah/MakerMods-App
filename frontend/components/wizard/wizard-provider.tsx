@@ -5,6 +5,7 @@ import {
   useContext,
   useReducer,
   useCallback,
+  useEffect,
   type ReactNode,
 } from "react";
 import type {
@@ -15,11 +16,13 @@ import type {
   CameraSelection,
   RecordingConfig,
   InferenceConfig,
+  TrainingConfig,
 } from "@/lib/wizard-types";
 import {
   INITIAL_STATE,
   INITIAL_RECORDING_CONFIG,
   INITIAL_INFERENCE_CONFIG,
+  INITIAL_TRAINING_CONFIG,
   SINGLE_PORT_ROLES,
   BIMANUAL_PORT_ROLES,
   validateBimanualCalibrationNames,
@@ -41,6 +44,10 @@ type Action =
   | { type: "SET_TELE_PROCESS_ID"; id: string | null }
   | { type: "SET_RECORDING_CONFIG"; config: Partial<RecordingConfig> }
   | { type: "SET_RECORD_PROCESS_ID"; id: string | null }
+  | { type: "SET_TRAINING_CONFIG"; config: Partial<TrainingConfig> }
+  | { type: "SET_TRAINING_JOB"; jobId: string; projectId: string }
+  | { type: "SET_TRAINING_OUTPUT_MODEL"; modelId: string }
+  | { type: "CLEAR_TRAINING_JOB" }
   | { type: "SET_INFERENCE_CONFIG"; config: Partial<InferenceConfig> }
   | { type: "SET_INFERENCE_PROCESS_ID"; id: string | null }
   | { type: "TOGGLE_DEBUG_MODE" }
@@ -49,7 +56,7 @@ type Action =
 
 // Step completion checker
 function computeCompletedSteps(state: WizardState): boolean[] {
-  const completed = [false, false, false, false, false, false, false];
+  const completed = [false, false, false, false, false, false, false, false];
 
   // Step 0: Robot Type
   completed[0] = state.robotMode !== null;
@@ -90,10 +97,11 @@ function computeCompletedSteps(state: WizardState): boolean[] {
     }
   }
 
-  // Steps 4-6: complete once the user has visited them
+  // Steps 4-7: complete once the user has visited them
   completed[4] = state.teleStepVisited;
   completed[5] = state.recordStepVisited;
-  completed[6] = state.inferenceStepVisited;
+  completed[6] = state.trainingStepVisited;
+  completed[7] = state.inferenceStepVisited;
 
   return completed;
 }
@@ -126,6 +134,13 @@ function resetStepsFrom(state: WizardState, fromStep: number): WizardState {
     s.recordProcessId = null;
   }
   if (fromStep <= 6) {
+    s.trainingStepVisited = false;
+    s.trainingConfig = { ...INITIAL_TRAINING_CONFIG };
+    s.trainingJobId = null;
+    s.trainingProjectId = null;
+    s.trainingOutputModelId = null;
+  }
+  if (fromStep <= 7) {
     s.inferenceStepVisited = false;
     s.inferenceConfig = { ...INITIAL_INFERENCE_CONFIG };
     s.inferenceProcessId = null;
@@ -146,7 +161,8 @@ function reducer(state: WizardState, action: Action): WizardState {
         camerasStepVisited: state.camerasStepVisited || action.step === 2,
         teleStepVisited: state.teleStepVisited || action.step === 4,
         recordStepVisited: state.recordStepVisited || action.step === 5,
-        inferenceStepVisited: state.inferenceStepVisited || action.step === 6,
+        trainingStepVisited: state.trainingStepVisited || action.step === 6,
+        inferenceStepVisited: state.inferenceStepVisited || action.step === 7,
       };
       break;
 
@@ -260,6 +276,37 @@ function reducer(state: WizardState, action: Action): WizardState {
       next = { ...state, recordProcessId: action.id };
       break;
 
+    case "SET_TRAINING_CONFIG":
+      next = {
+        ...state,
+        trainingConfig: { ...state.trainingConfig, ...action.config },
+      };
+      break;
+
+    case "SET_TRAINING_JOB":
+      next = {
+        ...state,
+        trainingJobId: action.jobId,
+        trainingProjectId: action.projectId,
+      };
+      break;
+
+    case "SET_TRAINING_OUTPUT_MODEL":
+      next = {
+        ...state,
+        trainingOutputModelId: action.modelId,
+      };
+      break;
+
+    case "CLEAR_TRAINING_JOB":
+      next = {
+        ...state,
+        trainingJobId: null,
+        trainingProjectId: null,
+        trainingOutputModelId: null,
+      };
+      break;
+
     case "SET_INFERENCE_CONFIG":
       next = {
         ...state,
@@ -304,8 +351,28 @@ interface WizardContextValue {
 
 const WizardContext = createContext<WizardContextValue | null>(null);
 
+function getInitialState(): WizardState {
+  if (typeof window === "undefined") return INITIAL_STATE;
+  try {
+    const saved = localStorage.getItem("inferenceConfig");
+    if (saved) {
+      return {
+        ...INITIAL_STATE,
+        inferenceConfig: { ...INITIAL_INFERENCE_CONFIG, ...JSON.parse(saved) },
+      };
+    }
+  } catch {}
+  return INITIAL_STATE;
+}
+
 export function WizardProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
+  const [state, dispatch] = useReducer(reducer, INITIAL_STATE, getInitialState);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("inferenceConfig", JSON.stringify(state.inferenceConfig));
+    } catch {}
+  }, [state.inferenceConfig]);
 
   const goToStep = useCallback(
     (step: number) => dispatch({ type: "GO_TO_STEP", step }),
@@ -316,7 +383,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     () =>
       dispatch({
         type: "GO_TO_STEP",
-        step: Math.min(state.currentStep + 1, 6),
+        step: Math.min(state.currentStep + 1, 7),
       }),
     [state.currentStep]
   );

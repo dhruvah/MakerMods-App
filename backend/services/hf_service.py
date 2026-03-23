@@ -1,9 +1,10 @@
 """HuggingFace service for authentication and repo management."""
 
+import json
 from pathlib import Path
 from typing import List, Optional
 
-from huggingface_hub import HfApi, list_datasets
+from huggingface_hub import HfApi, hf_hub_download, list_datasets
 
 from backend.models.recording import HFRepoInfo
 from backend.models.system import HFLoginStatus
@@ -90,6 +91,29 @@ class HuggingFaceService:
             print(f"Error creating repo: {e}")
 
         return None
+
+    def get_dataset_image_keys(self, repo_id: str) -> List[str]:
+        """Read image/video feature keys from a dataset's meta/info.json.
+
+        Args:
+            repo_id: HuggingFace dataset repo ID (e.g. "user/dataset").
+
+        Returns:
+            List of image feature keys (e.g. ["observation.images.front_cam"]).
+        """
+        try:
+            path = hf_hub_download(repo_id, "meta/info.json", repo_type="dataset")
+            with open(path) as f:
+                info = json.load(f)
+            features = info.get("features", {})
+            return [
+                key
+                for key, val in features.items()
+                if isinstance(val, dict) and val.get("dtype") == "video"
+            ]
+        except Exception as e:
+            print(f"Error reading dataset image keys: {e}")
+            return []
 
     def get_cache_path(self, repo_id: str) -> Optional[str]:
         """Get the local cache path for a dataset.

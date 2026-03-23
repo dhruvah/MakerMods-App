@@ -26,7 +26,7 @@ export function WizardSidebar() {
         {STEPS.map((step, i) => {
           const isCurrent = i === state.currentStep;
           // A step only shows as complete if all its prerequisites are also complete
-          // Steps 0-3 are sequential; steps 4-6 only require 0-3 (hardware setup)
+          // Steps 0-3 are sequential; steps 4-7 only require 0-3 (hardware setup)
           const prereqsMet =
             i <= 3
               ? state.completedSteps.slice(0, i).every(Boolean)

@@ -35,6 +35,56 @@ export interface RecordingConfig {
   cameraHeight: number;
 }
 
+// Training configuration (Qualia Studios)
+export interface TrainingConfig {
+  datasetId: string;
+  vlaType: string;
+  modelId: string; // HF base model ID, required for smolvla/pi0/pi05
+  instanceType: string;
+  batchSize: number;
+  hours: number;
+  outputModelName: string;
+  jobDescription: string;
+  cameraNames: string[];
+}
+
+// VLA types that require a base model_id for Qualia
+export const VLA_TYPES_REQUIRING_MODEL_ID = ["smolvla", "pi0", "pi05"] as const;
+
+// Default base model IDs per VLA type
+export const DEFAULT_MODEL_IDS: Record<string, string> = {
+  smolvla: "lerobot/smolvla_base",
+};
+
+// Training model options
+export const TRAINING_MODELS = [
+  { value: "act", label: "ACT", supported: true },
+  { value: "smolvla", label: "SmolVLA", supported: true },
+  { value: "pi0", label: "Pi0", supported: false, comingSoon: true },
+  { value: "pi05", label: "Pi0.5", supported: false, comingSoon: true },
+  { value: "gr00t_n1_5", label: "GR00T N1.5", supported: false, comingSoon: true },
+] as const;
+
+// Camera mapping: our UI names → Qualia camera slots
+export const QUALIA_CAMERA_MAPPING: Record<string, string> = {
+  front_cam: "image_top",
+  hand_cam: "image_wrist",
+  side_cam: "image_side",
+};
+
+// Training job phases (in order)
+export const TRAINING_PHASES = [
+  "queuing",
+  "credit_validation",
+  "instance_booting",
+  "instance_activation",
+  "instance_setup",
+  "dataset_preprocessing",
+  "training_running",
+  "model_uploading",
+  "completed",
+] as const;
+
 // Inference configuration
 export interface InferenceConfig {
   policyPath: string;
@@ -49,7 +99,7 @@ export interface InferenceConfig {
 // Supported inference model types
 export const INFERENCE_MODELS = [
   { value: "act", label: "ACT", supported: true },
-  { value: "smolvla", label: "SmolVLA", supported: false },
+  { value: "smolvla", label: "SmolVLA", supported: true },
   { value: "diffusion", label: "Diffusion Policy", supported: false },
   { value: "tdmpc", label: "TD-MPC", supported: false },
   { value: "vqbet", label: "VQ-BeT", supported: false },
@@ -63,7 +113,7 @@ export interface StartResponse {
 
 // Wizard state
 export interface WizardState {
-  currentStep: number; // 0-6
+  currentStep: number; // 0-7
   completedSteps: boolean[];
   debugMode: boolean;
 
@@ -93,7 +143,14 @@ export interface WizardState {
   recordingConfig: RecordingConfig;
   recordProcessId: string | null;
 
-  // Step 6: Inference
+  // Step 6: Training (Qualia)
+  trainingStepVisited: boolean;
+  trainingConfig: TrainingConfig;
+  trainingJobId: string | null;
+  trainingProjectId: string | null;
+  trainingOutputModelId: string | null;
+
+  // Step 7: Inference
   inferenceStepVisited: boolean;
   inferenceConfig: InferenceConfig;
   inferenceProcessId: string | null;
@@ -140,10 +197,23 @@ export const STEPS = [
   { label: "Calibration", description: "Choose calibration for each arm" },
   { label: "Teleoperate", description: "Test robot teleoperation" },
   { label: "Record", description: "Record training data" },
+  { label: "Training", description: "Train a policy with Qualia Studios" },
   { label: "Inference", description: "Run trained policy on robot" },
 ] as const;
 
 // Initial state
+export const INITIAL_TRAINING_CONFIG: TrainingConfig = {
+  datasetId: "",
+  vlaType: "act",
+  modelId: "",
+  instanceType: "",
+  batchSize: 32,
+  hours: 1,
+  outputModelName: "",
+  jobDescription: "",
+  cameraNames: [],
+};
+
 export const INITIAL_INFERENCE_CONFIG: InferenceConfig = {
   policyPath: "",
   repoId: "",
@@ -168,7 +238,7 @@ export const INITIAL_RECORDING_CONFIG: RecordingConfig = {
 
 export const INITIAL_STATE: WizardState = {
   currentStep: 0,
-  completedSteps: [false, false, false, false, false, false, false],
+  completedSteps: [false, false, false, false, false, false, false, false],
   debugMode: false,
   robotMode: null,
   detectedPorts: [],
@@ -184,6 +254,11 @@ export const INITIAL_STATE: WizardState = {
   recordStepVisited: false,
   recordingConfig: { ...INITIAL_RECORDING_CONFIG },
   recordProcessId: null,
+  trainingStepVisited: false,
+  trainingConfig: { ...INITIAL_TRAINING_CONFIG },
+  trainingJobId: null,
+  trainingProjectId: null,
+  trainingOutputModelId: null,
   inferenceStepVisited: false,
   inferenceConfig: { ...INITIAL_INFERENCE_CONFIG },
   inferenceProcessId: null,

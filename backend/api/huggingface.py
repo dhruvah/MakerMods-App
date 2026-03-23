@@ -58,3 +58,14 @@ async def create_repo(request: CreateRepoRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create repo: {e}")
+
+
+@router.get("/dataset-image-keys", response_model=List[str])
+async def get_dataset_image_keys(repo_id: str):
+    """Get image/video feature keys from a HuggingFace dataset."""
+    try:
+        return hf_service.get_dataset_image_keys(repo_id)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to read dataset image keys: {e}"
+        )

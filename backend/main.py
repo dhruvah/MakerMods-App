@@ -73,6 +73,7 @@ from backend.api import (
     setup,
     system,
     teleoperation,
+    training,
 )
 
 app.include_router(base_control.router, prefix="/api/base-control", tags=["base-control"])
@@ -85,6 +86,7 @@ app.include_router(config.router, prefix="/api/config", tags=["config"])
 app.include_router(huggingface.router, prefix="/api/huggingface", tags=["huggingface"])
 app.include_router(system.router, prefix="/api/system", tags=["system"])
 app.include_router(debug.router, prefix="/api/debug", tags=["debug"])
+app.include_router(training.router, prefix="/api/training", tags=["training"])
 
 # WebSocket endpoints
 from backend.websockets.logs import router as websocket_router

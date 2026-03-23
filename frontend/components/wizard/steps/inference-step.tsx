@@ -59,6 +59,19 @@ export function InferenceStep() {
 
   const config = state.inferenceConfig;
 
+  // Pre-fill policy path from training step's output model
+  useEffect(() => {
+    if (
+      state.trainingOutputModelId &&
+      !config.policyPath
+    ) {
+      dispatch({
+        type: "SET_INFERENCE_CONFIG",
+        config: { policyPath: state.trainingOutputModelId },
+      });
+    }
+  }, [state.trainingOutputModelId, config.policyPath, dispatch]);
+
   // Motor + camera feeds (only when displayData is on)
   const { motors, motorOrder, frequency } = useMotorState(
     logs,
@@ -121,7 +134,7 @@ export function InferenceStep() {
     config.task.trim() !== "" &&
     config.numEpisodes > 0 &&
     config.episodeTimeS > 0 &&
-    config.modelType === "act";
+    (config.modelType === "act" || config.modelType === "smolvla");
 
   async function handleStart() {
     setStarting(true);
@@ -242,6 +255,17 @@ export function InferenceStep() {
             <p className="text-xs text-muted-foreground">
               Evaluation results will be saved to this HuggingFace dataset.
             </p>
+            {config.repoId.trim() !== "" && (() => {
+              const datasetName = config.repoId.includes("/")
+                ? config.repoId.split("/").pop() || ""
+                : config.repoId;
+              return datasetName && !datasetName.startsWith("eval_") ? (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                  <AlertTriangle className="inline h-3 w-3 mr-1 -mt-0.5" />
+                  Dataset name should start with &quot;eval_&quot; (e.g. username/eval_my_dataset) or it won&apos;t work.
+                </p>
+              ) : null;
+            })()}
           </div>
 
           {/* Task description */}

@@ -221,4 +221,55 @@ export const api = {
   system: {
     getStatus: () => fetchAPI<SystemStatus>("/api/system/status"),
   },
+
+  training: {
+    getKeyStatus: () =>
+      fetchAPI<{ is_valid: boolean; message: string }>("/api/training/key-status"),
+    validateKey: (apiKey: string) =>
+      fetchAPI<{ is_valid: boolean; message: string }>("/api/training/validate-key", {
+        method: "POST",
+        body: JSON.stringify({ api_key: apiKey }),
+      }),
+    listInstances: () =>
+      fetchAPI<
+        Array<{
+          id: string;
+          name: string;
+          description: string;
+          gpu_description: string;
+          credits_per_hour: number;
+          specs: {
+            vcpus: number;
+            memory_gib: number;
+            storage_gib: number;
+            gpu_count: number;
+            gpu_type: string;
+          };
+          regions: string[];
+        }>
+      >("/api/training/instances"),
+    start: (params: {
+      dataset_id: string;
+      vla_type: string;
+      instance_type: string;
+      batch_size: number;
+      hours: number;
+      output_model_name: string;
+      job_description: string;
+      camera_names: string[];
+    }) =>
+      fetchAPI<{ job_id: string; project_id: string; message: string }>(
+        "/api/training/start",
+        { method: "POST", body: JSON.stringify(params) }
+      ),
+    getStatus: (jobId: string) =>
+      fetchAPI<{ job_id: string; project_id: string; status: string; phase: string; message: string; output_model_id: string | null }>(
+        `/api/training/status/${jobId}`
+      ),
+    cancel: (jobId: string) =>
+      fetchAPI<{ job_id: string; status: string; phase: string; message: string }>(
+        `/api/training/cancel/${jobId}`,
+        { method: "POST" }
+      ),
+  },
 };

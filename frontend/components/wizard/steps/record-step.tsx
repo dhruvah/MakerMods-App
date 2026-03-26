@@ -430,12 +430,16 @@ export function RecordStep() {
                 id="num-episodes"
                 type="number"
                 min={1}
-                value={config.numEpisodes}
+                value={config.numEpisodes || ""}
                 onChange={(e) =>
-                  updateConfig({ numEpisodes: parseInt(e.target.value) || 1 })
+                  updateConfig({ numEpisodes: parseInt(e.target.value) || 0 })
                 }
+                className={config.numEpisodes < 1 ? "border-red-500" : ""}
                 disabled={isRunning}
               />
+              {config.numEpisodes < 1 && (
+                <p className="text-xs text-red-500">Must be at least 1</p>
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -444,12 +448,16 @@ export function RecordStep() {
                 id="episode-time"
                 type="number"
                 min={1}
-                value={config.episodeTimeS}
+                value={config.episodeTimeS || ""}
                 onChange={(e) =>
-                  updateConfig({ episodeTimeS: parseInt(e.target.value) || 1 })
+                  updateConfig({ episodeTimeS: parseInt(e.target.value) || 0 })
                 }
+                className={config.episodeTimeS < 1 ? "border-red-500" : ""}
                 disabled={isRunning}
               />
+              {config.episodeTimeS < 1 && (
+                <p className="text-xs text-red-500">Must be at least 1</p>
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -458,10 +466,11 @@ export function RecordStep() {
                 id="reset-time"
                 type="number"
                 min={0}
-                value={config.resetTimeS}
-                onChange={(e) =>
-                  updateConfig({ resetTimeS: parseInt(e.target.value) || 0 })
-                }
+                value={config.resetTimeS ?? ""}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  updateConfig({ resetTimeS: val === "" ? 0 : parseInt(val) || 0 });
+                }}
                 disabled={isRunning}
               />
             </div>

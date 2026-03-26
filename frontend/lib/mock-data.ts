@@ -34,13 +34,12 @@ export const calibrationFiles: Record<string, string[]> = {
     "left_follower.json",
     "right_follower.json",
     "right_follower_2.json",
-  ],
-  "teleoperators/so101_leader": ["left_leader.json", "right_leader.json"],
-  "robots/bi_so101_follower": [
     "bimanual_follower_left.json",
     "bimanual_follower_right.json",
   ],
-  "teleoperators/bi_so101_leader": [
+  "teleoperators/so101_leader": [
+    "left_leader.json",
+    "right_leader.json",
     "bimanual_leader_left.json",
     "bimanual_leader_right.json",
   ],

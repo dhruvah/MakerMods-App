@@ -135,9 +135,32 @@ def _wiggle_gripper_sync(port: str) -> None:
 @router.post("/wiggle")
 async def wiggle_gripper(request: WiggleRequest):
     """Wiggle the gripper on a port so the user can identify which arm it is."""
+    from backend.services.port_lock_manager import PortInUseError, port_lock_manager
+
     try:
-        await asyncio.to_thread(_wiggle_gripper_sync, request.port)
+        async with port_lock_manager.hold([request.port], owner="wiggle"):
+            await asyncio.wait_for(
+                asyncio.to_thread(_wiggle_gripper_sync, request.port),
+                timeout=15.0,
+            )
         return {"message": f"Wiggled gripper on {request.port}"}
+    except PortInUseError as e:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": str(e),
+                "owner": e.owner,
+                "port": e.port,
+            },
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "Wiggle gripper timed out after 15 seconds",
+                "hint": "The arm may not be powered on or responding.",
+            },
+        )
     except Exception as e:
         traceback_str = tb.format_exc()
         logger.exception("Failed to wiggle gripper")

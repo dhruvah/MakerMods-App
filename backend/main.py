@@ -57,8 +57,10 @@ async def shutdown_event():
     """Cleanup on shutdown."""
     print("LeRobot Web UI shutting down...")
     from backend.services.base_control import base_control_service
+    from backend.services.port_lock_manager import port_lock_manager
     base_control_service.disconnect()
     await process_manager.cleanup()
+    await port_lock_manager.release_all()
 
 
 # Import and include routers

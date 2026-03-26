@@ -288,14 +288,18 @@ export function InferenceStep() {
                 id="inf-episodes"
                 type="number"
                 min={1}
-                value={config.numEpisodes}
+                value={config.numEpisodes || ""}
                 onChange={(e) =>
                   updateConfig({
-                    numEpisodes: parseInt(e.target.value) || 1,
+                    numEpisodes: parseInt(e.target.value) || 0,
                   })
                 }
+                className={config.numEpisodes < 1 ? "border-red-500" : ""}
                 disabled={isRunning}
               />
+              {config.numEpisodes < 1 && (
+                <p className="text-xs text-red-500">Must be at least 1</p>
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -304,14 +308,18 @@ export function InferenceStep() {
                 id="inf-episode-time"
                 type="number"
                 min={1}
-                value={config.episodeTimeS}
+                value={config.episodeTimeS || ""}
                 onChange={(e) =>
                   updateConfig({
-                    episodeTimeS: parseInt(e.target.value) || 1,
+                    episodeTimeS: parseInt(e.target.value) || 0,
                   })
                 }
+                className={config.episodeTimeS < 1 ? "border-red-500" : ""}
                 disabled={isRunning}
               />
+              {config.episodeTimeS < 1 && (
+                <p className="text-xs text-red-500">Must be at least 1</p>
+              )}
             </div>
           </div>
 

@@ -1,5 +1,6 @@
 """Teleoperation API endpoints."""
 
+import asyncio
 import json
 
 from fastapi import APIRouter, HTTPException
@@ -7,6 +8,7 @@ from fastapi import APIRouter, HTTPException
 from backend.models.system import ProcessStatus
 from backend.models.teleoperation import TeleoperationRequest, TeleoperationResponse
 from backend.services.config_manager import ConfigManager
+from backend.services.port_lock_manager import PortInUseError, port_lock_manager
 from backend.services.process_manager import process_manager
 
 router = APIRouter()
@@ -47,9 +49,23 @@ def build_teleoperation_command(config, display_data: bool = True) -> list[str]:
         ]
 
 
+def _extract_ports(config) -> list[str]:
+    """Extract all serial ports from the current config."""
+    if config.mode == "bimanual":
+        bi = config.bimanual
+        return [p for p in [
+            bi.left_follower_port, bi.right_follower_port,
+            bi.left_leader_port, bi.right_leader_port,
+        ] if p]
+    else:
+        sa = config.single_arm
+        return [p for p in [sa.follower_port, sa.leader_port] if p]
+
+
 @router.post("/start", response_model=TeleoperationResponse)
 async def start_teleoperation(request: TeleoperationRequest):
     """Start teleoperation."""
+    ports = []
     try:
         config = config_manager.load_config()
 
@@ -72,19 +88,28 @@ async def start_teleoperation(request: TeleoperationRequest):
                     status_code=400, detail="Single arm mode requires both follower and leader ports"
                 )
 
-        # Always enable display_data so motor positions are printed to stdout
-        # (the WebUI parses them for the live motor panel). Suppress the Rerun
-        # viewer by setting RERUN_ENABLED=false — rr.spawn() becomes a no-op.
+        # Acquire port locks
+        ports = _extract_ports(config)
+        try:
+            await port_lock_manager.acquire(ports, owner="teleoperation", mode="subprocess")
+        except PortInUseError as e:
+            raise HTTPException(status_code=409, detail={"message": str(e), "owner": e.owner, "port": e.port})
+
         command = build_teleoperation_command(config, display_data=True)
         process_id = await process_manager.start_process(
             command, "teleoperation", env={"RERUN": "off"}
         )
+
+        # Register process→ports mapping for release on stop
+        await port_lock_manager.register_process(process_id, ports)
 
         return TeleoperationResponse(process_id=process_id, message="Teleoperation started successfully")
 
     except HTTPException:
         raise
     except Exception as e:
+        if ports:
+            await port_lock_manager.release(ports)
         raise HTTPException(status_code=500, detail=f"Failed to start teleoperation: {e}")
 
 
@@ -96,6 +121,10 @@ async def stop_teleoperation(process_id: str):
 
         if not success:
             raise HTTPException(status_code=404, detail=f"Process {process_id} not found")
+
+        # Wait for OS to release the serial ports, then release the locks
+        await asyncio.sleep(0.5)
+        await port_lock_manager.release_for_process(process_id)
 
         return {"message": "Teleoperation stopped successfully"}
 

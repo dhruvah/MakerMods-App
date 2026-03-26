@@ -45,7 +45,7 @@ async def list_calibration_files(category: str, robot_type: str):
 
     Args:
         category: "robots" or "teleoperators".
-        robot_type: Robot type (e.g., "so101_follower", "bi_so101_follower").
+        robot_type: Robot type (e.g., "so101_follower", "so101_follower").
     """
     try:
         return calibration_service.list_calibration_files(category, robot_type)
@@ -101,10 +101,10 @@ async def get_calibration_status():
             follower_base = bi.follower_id or "bimanual_follower"
             leader_base = bi.leader_id or "bimanual_leader"
             devices = [
-                ("robot", f"{follower_base}_left", "bi_so101_follower", bi.left_follower_port),
-                ("robot", f"{follower_base}_right", "bi_so101_follower", bi.right_follower_port),
-                ("teleoperator", f"{leader_base}_left", "bi_so101_leader", bi.left_leader_port),
-                ("teleoperator", f"{leader_base}_right", "bi_so101_leader", bi.right_leader_port),
+                ("robot", f"{follower_base}_left", "so101_follower", bi.left_follower_port),
+                ("robot", f"{follower_base}_right", "so101_follower", bi.right_follower_port),
+                ("teleoperator", f"{leader_base}_left", "so101_leader", bi.left_leader_port),
+                ("teleoperator", f"{leader_base}_right", "so101_leader", bi.right_leader_port),
             ]
         else:
             # Check single arm devices
@@ -127,6 +127,15 @@ async def get_calibration_status():
 @router.post("/start", response_model=CalibrationStartResponse)
 async def start_calibration(request: CalibrationStartRequest):
     """Start calibration process for a device."""
+    from backend.services.port_lock_manager import PortInUseError, port_lock_manager
+
+    try:
+        await port_lock_manager.acquire(
+            [request.port], owner="calibration", mode="subprocess",
+        )
+    except PortInUseError as e:
+        raise HTTPException(status_code=409, detail={"message": str(e), "owner": e.owner, "port": e.port})
+
     try:
         command = calibration_service.build_calibration_command(
             request.device_type, request.device_id, request.robot_type, request.port
@@ -134,22 +143,33 @@ async def start_calibration(request: CalibrationStartRequest):
 
         process_id = await process_manager.start_process(command, "calibration")
 
+        # Register process→port mapping for release on stop
+        await port_lock_manager.register_process(process_id, [request.port])
+
         return CalibrationStartResponse(
             process_id=process_id, message=f"Calibration started for {request.device_id}"
         )
 
     except Exception as e:
+        await port_lock_manager.release([request.port])
         raise HTTPException(status_code=500, detail=f"Failed to start calibration: {e}")
 
 
 @router.post("/stop/{process_id}")
 async def stop_calibration(process_id: str):
     """Stop calibration process."""
+    import asyncio
+    from backend.services.port_lock_manager import port_lock_manager
+
     try:
         success = await process_manager.stop_process(process_id)
 
         if not success:
             raise HTTPException(status_code=404, detail=f"Process {process_id} not found")
+
+        # Wait for OS to release the port, then release the lock
+        await asyncio.sleep(0.5)
+        await port_lock_manager.release_for_process(process_id)
 
         return {"message": "Calibration stopped successfully"}
 
@@ -185,25 +205,45 @@ async def start_auto_calibration(request: AutoCalibrationStartRequest):
     Runs lerobot_measure_feetech_ranges with --save to calibrate all 6 motors
     and persist the result. Logs can be streamed via /ws/logs/{process_id}.
     """
+    from backend.services.port_lock_manager import PortInUseError, port_lock_manager
+
+    try:
+        await port_lock_manager.acquire(
+            [request.port], owner="auto_calibration", mode="subprocess",
+        )
+    except PortInUseError as e:
+        raise HTTPException(status_code=409, detail={"message": str(e), "owner": e.owner, "port": e.port})
+
     try:
         process_id = await auto_cal_service.start(
             port=request.port,
             device_id=request.device_id,
         )
+
+        # Register process→port mapping for release on stop
+        await port_lock_manager.register_process(process_id, [request.port])
+
         return AutoCalibrationStartResponse(
             process_id=process_id,
             message=f"Auto-calibration started for {request.device_id}",
         )
     except Exception as e:
+        await port_lock_manager.release([request.port])
         raise HTTPException(status_code=500, detail=f"Failed to start auto-calibration: {e}")
 
 
 @router.post("/auto/stop/{process_id}")
 async def stop_auto_calibration(process_id: str):
     """Stop a running auto-calibration process."""
+    import asyncio
+    from backend.services.port_lock_manager import port_lock_manager
+
     success = await auto_cal_service.stop(process_id)
     if not success:
         raise HTTPException(status_code=404, detail=f"Process {process_id} not found")
+
+    await asyncio.sleep(0.5)
+    await port_lock_manager.release_for_process(process_id)
     return {"message": "Auto-calibration stopped"}
 
 
@@ -252,10 +292,13 @@ async def manual_calibration_ws(websocket: WebSocket):
        Server responds: {"type": "recording_done", "mins": {...}, "maxes": {...}}
        Then saves calibration and responds: {"type": "saved", "path": "..."}
     """
+    from backend.services.port_lock_manager import PortInUseError, port_lock_manager
+
     await websocket.accept()
 
     bus = None
     port = None
+    port_locked = False
     device_type = None
     robot_type = None
     device_id = None
@@ -272,7 +315,10 @@ async def manual_calibration_ws(websocket: WebSocket):
                     msg = await asyncio.wait_for(websocket.receive_json(), timeout=0.1)
                 except asyncio.TimeoutError:
                     # No message — send position update
-                    positions = await asyncio.to_thread(manual_cal_service.read_positions, bus)
+                    positions = await asyncio.wait_for(
+                        asyncio.to_thread(manual_cal_service.read_positions, bus),
+                        timeout=5.0,
+                    )
                     for motor, pos in positions.items():
                         mins[motor] = min(pos, mins.get(motor, pos))
                         maxes[motor] = max(pos, maxes.get(motor, pos))
@@ -299,14 +345,35 @@ async def manual_calibration_ws(websocket: WebSocket):
                 device_type = msg.get("device_type", "robot")
                 robot_type = msg.get("robot_type", "so101_follower")
                 device_id = msg.get("device_id", "left_follower")
-                bus = await asyncio.to_thread(manual_cal_service.create_bus, port)
+
+                # Acquire port lock
+                try:
+                    await port_lock_manager.acquire([port], owner="manual_calibration", mode="direct")
+                    port_locked = True
+                except PortInUseError as e:
+                    await websocket.send_json({"type": "error", "message": str(e)})
+                    break
+
+                try:
+                    bus = await asyncio.wait_for(
+                        asyncio.to_thread(manual_cal_service.create_bus, port),
+                        timeout=10.0,
+                    )
+                except Exception:
+                    await port_lock_manager.release([port])
+                    port_locked = False
+                    raise
+
                 await websocket.send_json({
                     "type": "connected",
                     "motors": list(bus.motors.keys()),
                 })
 
             elif action == "set_homing" and bus:
-                homing_offsets = await asyncio.to_thread(manual_cal_service.set_homing, bus)
+                homing_offsets = await asyncio.wait_for(
+                    asyncio.to_thread(manual_cal_service.set_homing, bus),
+                    timeout=10.0,
+                )
                 await websocket.send_json({
                     "type": "homing_done",
                     "offsets": homing_offsets,
@@ -314,7 +381,10 @@ async def manual_calibration_ws(websocket: WebSocket):
 
             elif action == "start_recording" and bus:
                 # Reset mins/maxes from current positions
-                positions = await asyncio.to_thread(manual_cal_service.read_positions, bus)
+                positions = await asyncio.wait_for(
+                    asyncio.to_thread(manual_cal_service.read_positions, bus),
+                    timeout=5.0,
+                )
                 mins = dict(positions)
                 maxes = dict(positions)
                 recording = True
@@ -344,11 +414,14 @@ async def manual_calibration_ws(websocket: WebSocket):
                         calibration_data, device_type, robot_type, device_id,
                     )
 
-                    # Write to motors using a fresh bus connection
-                    if port:
-                        await asyncio.to_thread(
-                            manual_cal_service.write_calibration_to_motors,
-                            port, calibration_data,
+                    # Write calibration to motors using the existing bus
+                    if bus:
+                        await asyncio.wait_for(
+                            asyncio.to_thread(
+                                manual_cal_service.write_calibration_to_bus,
+                                bus, calibration_data,
+                            ),
+                            timeout=10.0,
                         )
 
                     await websocket.send_json({
@@ -361,6 +434,11 @@ async def manual_calibration_ws(websocket: WebSocket):
 
     except WebSocketDisconnect:
         pass
+    except asyncio.TimeoutError:
+        try:
+            await websocket.send_json({"type": "error", "message": "Operation timed out — is the arm powered on?"})
+        except Exception:
+            pass
     except Exception as e:
         try:
             await websocket.send_json({"type": "error", "message": str(e)})
@@ -373,6 +451,8 @@ async def manual_calibration_ws(websocket: WebSocket):
                 await asyncio.to_thread(bus.disconnect)
             except Exception:
                 pass
+        if port_locked and port:
+            await port_lock_manager.release([port])
         try:
             await websocket.close()
         except Exception:

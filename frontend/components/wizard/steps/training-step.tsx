@@ -256,6 +256,7 @@ export function TrainingStep() {
     trainingConfig.instanceType &&
     trainingConfig.outputModelName &&
     trainingConfig.hours > 0 &&
+    trainingConfig.batchSize > 0 &&
     (!needsModelId || trainingConfig.modelId.trim() !== "") &&
     !state.trainingJobId;
 
@@ -674,11 +675,15 @@ export function TrainingStep() {
               min={0.5}
               max={168}
               step={0.5}
-              value={trainingConfig.hours}
+              value={trainingConfig.hours || ""}
               onChange={(e) =>
-                updateConfig({ hours: parseFloat(e.target.value) || 1 })
+                updateConfig({ hours: parseFloat(e.target.value) || 0 })
               }
+              className={trainingConfig.hours < 0.5 ? "border-red-500" : ""}
             />
+            {trainingConfig.hours < 0.5 && (
+              <p className="text-xs text-red-500">Must be at least 0.5</p>
+            )}
           </div>
           <div className="space-y-2">
             <Label>Batch Size</Label>
@@ -686,11 +691,15 @@ export function TrainingStep() {
               type="number"
               min={1}
               max={256}
-              value={trainingConfig.batchSize}
+              value={trainingConfig.batchSize || ""}
               onChange={(e) =>
-                updateConfig({ batchSize: parseInt(e.target.value) || 32 })
+                updateConfig({ batchSize: parseInt(e.target.value) || 0 })
               }
+              className={trainingConfig.batchSize < 1 ? "border-red-500" : ""}
             />
+            {trainingConfig.batchSize < 1 && (
+              <p className="text-xs text-red-500">Must be at least 1</p>
+            )}
           </div>
         </div>
 

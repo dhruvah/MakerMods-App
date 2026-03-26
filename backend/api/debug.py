@@ -246,4 +246,35 @@ def _scan_motors_sync(port: str) -> MotorScanResponse:
 @router.post("/scan-motors", response_model=MotorScanResponse)
 async def scan_motors(request: MotorScanRequest):
     """Scan a port for responding servo motors."""
-    return await asyncio.to_thread(_scan_motors_sync, request.port)
+    from backend.services.port_lock_manager import PortInUseError, port_lock_manager
+
+    try:
+        async with port_lock_manager.hold([request.port], owner="motor_scan"):
+            return await asyncio.wait_for(
+                asyncio.to_thread(_scan_motors_sync, request.port),
+                timeout=15.0,
+            )
+    except PortInUseError as e:
+        return MotorScanResponse(
+            port=request.port,
+            connected=False,
+            error=str(e),
+            hint=f"Port is being used by {e.owner}. Stop it first.",
+            motors=[
+                MotorStatus(id=i, name=MOTOR_NAMES[i], responding=False)
+                for i in range(1, 7)
+            ],
+            log=[str(e)],
+        )
+    except asyncio.TimeoutError:
+        return MotorScanResponse(
+            port=request.port,
+            connected=False,
+            error="Motor scan timed out after 15 seconds",
+            hint="The arm may not be powered on or responding.",
+            motors=[
+                MotorStatus(id=i, name=MOTOR_NAMES[i], responding=False)
+                for i in range(1, 7)
+            ],
+            log=["Timed out"],
+        )

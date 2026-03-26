@@ -6,6 +6,7 @@ from backend.models.system import SystemStatus
 from backend.services.calibration_service import CalibrationService
 from backend.services.config_manager import ConfigManager
 from backend.services.hf_service import HuggingFaceService
+from backend.services.port_lock_manager import port_lock_manager
 from backend.services.process_manager import process_manager
 
 router = APIRouter()
@@ -35,3 +36,9 @@ async def get_system_status():
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get system status: {e}")
+
+
+@router.get("/port-locks")
+async def get_port_locks():
+    """Return current port lock status for diagnostics."""
+    return port_lock_manager.get_status()

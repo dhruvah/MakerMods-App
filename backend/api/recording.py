@@ -1,5 +1,6 @@
 """Recording API endpoints."""
 
+import asyncio
 import json
 import shutil
 import subprocess
@@ -11,6 +12,7 @@ from fastapi import APIRouter, HTTPException
 from backend.models.recording import RecordingRequest, RecordingResponse
 from backend.models.system import ProcessStatus
 from backend.services.config_manager import ConfigManager
+from backend.services.port_lock_manager import PortInUseError, port_lock_manager
 from backend.services.process_manager import process_manager
 
 router = APIRouter()
@@ -79,9 +81,23 @@ def build_recording_command(config, request: RecordingRequest) -> list[str]:
         ]
 
 
+def _extract_recording_ports(config) -> list[str]:
+    """Extract all serial ports used by recording."""
+    if config.mode == "bimanual":
+        bi = config.bimanual
+        return [p for p in [
+            bi.left_follower_port, bi.right_follower_port,
+            bi.left_leader_port, bi.right_leader_port,
+        ] if p]
+    else:
+        sa = config.single_arm
+        return [p for p in [sa.follower_port, sa.leader_port] if p]
+
+
 @router.post("/start", response_model=RecordingResponse)
 async def start_recording(request: RecordingRequest):
     """Start dataset recording."""
+    ports = []
     try:
         config = config_manager.load_config()
 
@@ -111,9 +127,19 @@ async def start_recording(request: RecordingRequest):
             if not config.single_arm.cameras:
                 raise HTTPException(status_code=400, detail="No cameras configured for recording")
 
+        # Acquire port locks
+        ports = _extract_recording_ports(config)
+        try:
+            await port_lock_manager.acquire(ports, owner="recording", mode="subprocess")
+        except PortInUseError as e:
+            raise HTTPException(status_code=409, detail={"message": str(e), "owner": e.owner, "port": e.port})
+
         # Build and start command
         command = build_recording_command(config, request)
         process_id = await process_manager.start_process(command, "recording")
+
+        # Register process→ports mapping for release on stop
+        await port_lock_manager.register_process(process_id, ports)
 
         # Update last recording config
         config.last_recording.repo_id = request.repo_id
@@ -127,6 +153,8 @@ async def start_recording(request: RecordingRequest):
     except HTTPException:
         raise
     except Exception as e:
+        if ports:
+            await port_lock_manager.release(ports)
         raise HTTPException(status_code=500, detail=f"Failed to start recording: {e}")
 
 
@@ -138,6 +166,10 @@ async def stop_recording(process_id: str):
 
         if not success:
             raise HTTPException(status_code=404, detail=f"Process {process_id} not found")
+
+        # Wait for OS to release ports, then release locks
+        await asyncio.sleep(0.5)
+        await port_lock_manager.release_for_process(process_id)
 
         return {"message": "Recording stopped successfully"}
 

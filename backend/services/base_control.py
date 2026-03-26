@@ -250,7 +250,7 @@ class BaseControlService:
         try:
             while True:
                 action = self._compute_action()
-                self._send_action(action)
+                await asyncio.to_thread(self._send_action, action)
                 await asyncio.sleep(1.0 / 50)
         except asyncio.CancelledError:
             pass
@@ -258,7 +258,11 @@ class BaseControlService:
             # Stop wheels
             if self.is_connected:
                 try:
-                    self.bus.sync_write("Goal_Velocity", {name: 0 for name in BASE_MOTOR_IDS})
+                    await asyncio.to_thread(
+                        self.bus.sync_write,
+                        "Goal_Velocity",
+                        {name: 0 for name in BASE_MOTOR_IDS},
+                    )
                 except Exception:
                     pass
             logger.info("Base control loop stopped")

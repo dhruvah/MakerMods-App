@@ -89,8 +89,22 @@ class ManualCalibrationService:
         logger.info(f"Calibration saved to {cal_path}")
         return cal_path
 
+    def write_calibration_to_bus(self, bus: FeetechMotorsBus, calibration_data: dict):
+        """Write calibration values to motor EEPROM using an existing bus."""
+        cal_dict = {}
+        for name, data in calibration_data.items():
+            cal_dict[name] = MotorCalibration(
+                id=data["id"],
+                drive_mode=data["drive_mode"],
+                homing_offset=data["homing_offset"],
+                range_min=data["range_min"],
+                range_max=data["range_max"],
+            )
+        bus.write_calibration(cal_dict)
+        logger.info(f"Calibration written to motors: {list(calibration_data.keys())}")
+
     def write_calibration_to_motors(self, port: str, calibration_data: dict):
-        """Write calibration values to motor EEPROM."""
+        """Write calibration values to motor EEPROM (opens a fresh bus)."""
         motor_names = list(calibration_data.keys())
         motors = {}
         for name in motor_names:
@@ -100,17 +114,7 @@ class ManualCalibrationService:
 
         try:
             bus.connect()
-            cal_dict = {}
-            for name, data in calibration_data.items():
-                cal_dict[name] = MotorCalibration(
-                    id=data["id"],
-                    drive_mode=data["drive_mode"],
-                    homing_offset=data["homing_offset"],
-                    range_min=data["range_min"],
-                    range_max=data["range_max"],
-                )
-            bus.write_calibration(cal_dict)
-            logger.info(f"Calibration written to motors: {motor_names}")
+            self.write_calibration_to_bus(bus, calibration_data)
         finally:
             if bus.is_connected:
                 bus.disconnect()

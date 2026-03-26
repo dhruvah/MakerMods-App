@@ -124,6 +124,16 @@ class ProcessManager:
             pass
         except Exception as e:
             process_info.error_message = f"Error collecting logs: {e}"
+        finally:
+            # Process has exited — release any port locks it held.
+            # This handles the case where a subprocess finishes on its own
+            # (e.g. calibration completes, recording finishes all episodes)
+            # without the user explicitly calling the stop endpoint.
+            try:
+                from backend.services.port_lock_manager import port_lock_manager
+                await port_lock_manager.release_for_process(process_id)
+            except Exception:
+                pass
 
     async def stop_process(self, process_id: str, timeout: float = 5.0) -> bool:
         """Stop a running subprocess.

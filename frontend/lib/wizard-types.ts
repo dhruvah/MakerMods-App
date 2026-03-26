@@ -180,12 +180,14 @@ export function getCalibrationPaths(mode: RobotMode): { role: string; category: 
       { role: "leader", category: "teleoperators", robotType: "so101_leader" },
     ];
   }
-  // Bimanual wrappers store calibration files under bi_so101_follower / bi_so101_leader.
+  // Bimanual sub-arms are SO101Leader/SO101Follower instances that look for
+  // calibration files under so101_follower / so101_leader (their own class name),
+  // NOT bi_so101_follower / bi_so101_leader (the wrapper name).
   return [
-    { role: "left_follower", category: "robots", robotType: "bi_so101_follower" },
-    { role: "right_follower", category: "robots", robotType: "bi_so101_follower" },
-    { role: "left_leader", category: "teleoperators", robotType: "bi_so101_leader" },
-    { role: "right_leader", category: "teleoperators", robotType: "bi_so101_leader" },
+    { role: "left_follower", category: "robots", robotType: "so101_follower" },
+    { role: "right_follower", category: "robots", robotType: "so101_follower" },
+    { role: "left_leader", category: "teleoperators", robotType: "so101_leader" },
+    { role: "right_leader", category: "teleoperators", robotType: "so101_leader" },
   ];
 }
 

@@ -1,5 +1,6 @@
 """Inference API endpoints."""
 
+import asyncio
 import json
 
 from fastapi import APIRouter, HTTPException
@@ -7,6 +8,7 @@ from fastapi import APIRouter, HTTPException
 from backend.models.inference import InferenceRequest, InferenceResponse
 from backend.models.system import ProcessStatus
 from backend.services.config_manager import ConfigManager
+from backend.services.port_lock_manager import PortInUseError, port_lock_manager
 from backend.services.process_manager import process_manager
 
 router = APIRouter()
@@ -71,9 +73,19 @@ def build_inference_command(config, request: InferenceRequest) -> list[str]:
         ]
 
 
+def _extract_inference_ports(config) -> list[str]:
+    """Extract follower ports used by inference (no teleop ports needed)."""
+    if config.mode == "bimanual":
+        bi = config.bimanual
+        return [p for p in [bi.left_follower_port, bi.right_follower_port] if p]
+    else:
+        return [config.single_arm.follower_port] if config.single_arm.follower_port else []
+
+
 @router.post("/start", response_model=InferenceResponse)
 async def start_inference(request: InferenceRequest):
     """Start policy inference (autonomous robot control)."""
+    ports = []
     try:
         config = config_manager.load_config()
 
@@ -106,8 +118,18 @@ async def start_inference(request: InferenceRequest):
                     status_code=400, detail="No cameras configured for inference"
                 )
 
+        # Acquire port locks
+        ports = _extract_inference_ports(config)
+        try:
+            await port_lock_manager.acquire(ports, owner="inference", mode="subprocess")
+        except PortInUseError as e:
+            raise HTTPException(status_code=409, detail={"message": str(e), "owner": e.owner, "port": e.port})
+
         command = build_inference_command(config, request)
         process_id = await process_manager.start_process(command, "inference")
+
+        # Register process→ports mapping for release on stop
+        await port_lock_manager.register_process(process_id, ports)
 
         return InferenceResponse(
             process_id=process_id, message="Inference started successfully"
@@ -116,6 +138,8 @@ async def start_inference(request: InferenceRequest):
     except HTTPException:
         raise
     except Exception as e:
+        if ports:
+            await port_lock_manager.release(ports)
         raise HTTPException(status_code=500, detail=f"Failed to start inference: {e}")
 
 
@@ -129,6 +153,10 @@ async def stop_inference(process_id: str):
             raise HTTPException(
                 status_code=404, detail=f"Process {process_id} not found"
             )
+
+        # Wait for OS to release ports, then release locks
+        await asyncio.sleep(0.5)
+        await port_lock_manager.release_for_process(process_id)
 
         return {"message": "Inference stopped successfully"}
 

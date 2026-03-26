@@ -83,12 +83,12 @@ This is critical to understand. Lerobot's bimanual wrappers (`bi_so101_follower`
 - Optional overrides: `--robot.left_id` / `--robot.right_id` bypass the derivation
 
 ### Calibration file storage
-- Bimanual calibration files are stored under the **wrapper type directory**:
-  - `~/.cache/huggingface/lerobot/calibration/robots/bi_so101_follower/{base}_left.json`
-  - `~/.cache/huggingface/lerobot/calibration/robots/bi_so101_follower/{base}_right.json`
-  - `~/.cache/huggingface/lerobot/calibration/teleoperators/bi_so101_leader/{base}_left.json`
-  - `~/.cache/huggingface/lerobot/calibration/teleoperators/bi_so101_leader/{base}_right.json`
-- Single-arm calibration files go under `so101_follower` / `so101_leader`
+- Bimanual sub-arms are `SO101Follower`/`SO101Leader` instances, so they look for calibration files under the **sub-arm type directory** (same as single-arm):
+  - `~/.cache/huggingface/lerobot/calibration/robots/so101_follower/{base}_left.json`
+  - `~/.cache/huggingface/lerobot/calibration/robots/so101_follower/{base}_right.json`
+  - `~/.cache/huggingface/lerobot/calibration/teleoperators/so101_leader/{base}_left.json`
+  - `~/.cache/huggingface/lerobot/calibration/teleoperators/so101_leader/{base}_right.json`
+- Single-arm calibration files also go under `so101_follower` / `so101_leader`
 
 ### How the UI handles this
 - Backend `BimanualConfig` stores `follower_id` and `leader_id` (base IDs)

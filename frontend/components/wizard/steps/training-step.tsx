@@ -672,17 +672,17 @@ export function TrainingStep() {
             <Label>Duration (Hours)</Label>
             <Input
               type="number"
-              min={0.5}
+              min={0.001}
               max={168}
-              step={0.5}
+              step={0.1}
               value={trainingConfig.hours || ""}
               onChange={(e) =>
                 updateConfig({ hours: parseFloat(e.target.value) || 0 })
               }
-              className={trainingConfig.hours < 0.5 ? "border-red-500" : ""}
+              className={trainingConfig.hours <= 0 ? "border-red-500" : ""}
             />
-            {trainingConfig.hours < 0.5 && (
-              <p className="text-xs text-red-500">Must be at least 0.5</p>
+            {trainingConfig.hours <= 0 && (
+              <p className="text-xs text-red-500">Must be greater than 0</p>
             )}
           </div>
           <div className="space-y-2">

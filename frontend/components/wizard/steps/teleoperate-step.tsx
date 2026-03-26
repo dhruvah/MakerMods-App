@@ -64,9 +64,13 @@ export function TeleoperateStep() {
             setTeleState("error");
             setErrorMsg(status.error_message || "Process exited with an error");
             setShowLogs(true);
+            // Ensure port locks are released even if _collect_logs hasn't finished cleanup
+            services.stopTeleoperation(processId).catch(() => {});
             stopPolling();
           } else if (status.state === "stopped") {
             setTeleState("stopped");
+            // Ensure port locks are released
+            services.stopTeleoperation(processId).catch(() => {});
             stopPolling();
           }
         } catch {

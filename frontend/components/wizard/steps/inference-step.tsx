@@ -102,9 +102,13 @@ export function InferenceStep() {
               status.error_message || "Process exited with an error"
             );
             setShowLogs(true);
+            // Ensure port locks are released even if _collect_logs hasn't finished cleanup
+            services.stopInference(processId).catch(() => {});
             dispatch({ type: "SET_INFERENCE_PROCESS_ID", id: null });
             stopPolling();
           } else if (status.state === "stopped") {
+            // Ensure port locks are released
+            services.stopInference(processId).catch(() => {});
             dispatch({ type: "SET_INFERENCE_PROCESS_ID", id: null });
             stopPolling();
           }

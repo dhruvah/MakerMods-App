@@ -44,7 +44,7 @@ import { StepCard } from "../step-card";
 // Recording phase detection
 // ---------------------------------------------------------------------------
 
-type RecordPhase = "idle" | "recording" | "resetting" | "encoding" | "done";
+type RecordPhase = "idle" | "recording" | "resetting" | "encoding" | "finalizing";
 
 const EPISODE_RE = /Recording episode (\d+)/;
 const RESET_RE = /Reset the environment/;
@@ -66,7 +66,7 @@ function useRecordingPhase(logs: string[], isRunning: boolean) {
       const line = tail[i];
 
       if (DONE_RE.test(line)) {
-        setPhase("done");
+        setPhase("finalizing");
         return;
       }
       if (ENCODING_RE.test(line)) {
@@ -115,6 +115,8 @@ function saveRepoId(repoId: string) {
 // Phase status card
 // ---------------------------------------------------------------------------
 
+type StatusCardPhase = RecordPhase | "done";
+
 function RecordingStatusCard({
   phase,
   currentEpisode,
@@ -122,7 +124,7 @@ function RecordingStatusCard({
   onStop,
   stopping,
 }: {
-  phase: RecordPhase;
+  phase: StatusCardPhase;
   currentEpisode: number | null;
   numEpisodes: number;
   onStop: () => void;
@@ -137,7 +139,7 @@ function RecordingStatusCard({
     accent: string;
   };
 
-  const configs: Record<RecordPhase, PhaseConfig> = {
+  const configs: Record<StatusCardPhase, PhaseConfig> = {
     idle: { icon: null, title: "", subtitle: "", accent: "" },
     recording: {
       icon: <Clapperboard className="h-5 w-5 text-red-500 shrink-0" />,
@@ -160,10 +162,16 @@ function RecordingStatusCard({
       subtitle: "Please wait while the episode is being saved.",
       accent: "border-blue-200 dark:border-blue-900",
     },
+    finalizing: {
+      icon: <Loader2 className="h-5 w-5 text-blue-500 shrink-0 animate-spin" />,
+      title: "Uploading to HuggingFace…",
+      subtitle: "All episodes recorded. Please wait for the upload to finish.",
+      accent: "border-blue-200 dark:border-blue-900",
+    },
     done: {
       icon: <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />,
-      title: "All episodes complete",
-      subtitle: "The dataset is being finalised and uploaded.",
+      title: "Recording complete",
+      subtitle: "All episodes recorded and uploaded to HuggingFace.",
       accent: "border-emerald-200 dark:border-emerald-900",
     },
   };
@@ -177,7 +185,7 @@ function RecordingStatusCard({
         <p className="text-sm font-medium">{cfg.title}</p>
         <p className="text-xs text-muted-foreground mt-0.5">{cfg.subtitle}</p>
       </div>
-      {phase !== "done" && (
+      {phase !== "done" && phase !== "finalizing" && (
         <Button variant="outline" size="sm" onClick={onStop} disabled={stopping}>
           {stopping ? (
             <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
@@ -203,6 +211,7 @@ export function RecordStep() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [repoIdWarning, setRepoIdWarning] = useState(false);
+  const [recordingSuccess, setRecordingSuccess] = useState(false);
   const [hfStatus, setHfStatus] = useState<{
     is_logged_in: boolean;
     username: string | null;
@@ -246,9 +255,14 @@ export function RecordStep() {
           if (status.state === "error") {
             setErrorMsg(status.error_message || "Process exited with an error");
             setShowLogs(true);
+            // Ensure port locks are released even if _collect_logs hasn't finished cleanup
+            services.stopRecording(processId).catch(() => {});
             dispatch({ type: "SET_RECORD_PROCESS_ID", id: null });
             stopPolling();
           } else if (status.state === "stopped") {
+            setRecordingSuccess(true);
+            // Ensure port locks are released
+            services.stopRecording(processId).catch(() => {});
             dispatch({ type: "SET_RECORD_PROCESS_ID", id: null });
             stopPolling();
           }
@@ -305,6 +319,7 @@ export function RecordStep() {
     setStarting(true);
     setErrorMsg(null);
     setShowLogs(false);
+    setRecordingSuccess(false);
     try {
       // Save current wizard state (ports, cameras, calibration) to backend config
       await services.saveConfig(state);
@@ -607,10 +622,10 @@ export function RecordStep() {
           </div>
         )}
 
-        {/* Phase status banner (shown while process is running) */}
-        {isRunning && (
+        {/* Phase status banner (shown while process is running or after success) */}
+        {(isRunning || recordingSuccess) && (
           <RecordingStatusCard
-            phase={phase}
+            phase={recordingSuccess ? "done" : phase}
             currentEpisode={currentEpisode}
             numEpisodes={config.numEpisodes}
             onStop={handleStop}

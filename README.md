@@ -87,7 +87,7 @@ cd /path/to/MakerMods-LeRobot-UI
 pip install -r requirements.txt
 ```
 
-**requirements_linux.txt** includes:
+**requirements.txt** includes:
 
 - `fastapi`, `uvicorn` — API and server  
 - `opencv-python-headless` — camera scanning/preview (no GUI)  

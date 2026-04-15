@@ -14,8 +14,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "xLeRobot Setup",
+  title: "MakerMods Setup Wizard",
   description: "Setup wizard for xLeRobot teleoperation and data recording",
+  icons: {
+    icon: "/makermods-logo.png",
+    shortcut: "/makermods-logo.png",
+    apple: "/makermods-logo.png",
+  },
 };
 
 export default function RootLayout({

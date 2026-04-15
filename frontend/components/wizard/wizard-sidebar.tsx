@@ -18,7 +18,7 @@ export function WizardSidebar() {
           alt="MakerMods"
           width={160}
           height={40}
-          className="h-14 w-auto object-contain"
+          className="h-16 w-auto object-contain"
           priority
         />
       </div>

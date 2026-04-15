@@ -321,17 +321,20 @@ export function RecordStep() {
     setShowLogs(false);
     setRecordingSuccess(false);
     try {
+      const suffix = config.repoId.trim();
+      if (!hfStatus?.username) {
+        throw new Error("Not logged in to HuggingFace");
+      }
+      const fullRepoId = `${hfStatus.username}/makermods_${suffix}`;
       // Save current wizard state (ports, cameras, calibration) to backend config
       await services.saveConfig(state);
       // Release any MJPEG camera streams so the recording subprocess can access them
       await services.stopCameraStreams().catch(() => {});
       // Clear cached data so the new recording replaces any previous dataset
-      if (config.repoId.trim()) {
-        await services.clearCache(config.repoId.trim()).catch(() => {});
-      }
-      const res = await services.startRecording(config);
+      await services.clearCache(fullRepoId).catch(() => {});
+      const res = await services.startRecording({ ...config, repoId: fullRepoId });
       dispatch({ type: "SET_RECORD_PROCESS_ID", id: res.process_id });
-      saveRepoId(config.repoId.trim());
+      saveRepoId(suffix);
       setRepoIdWarning(false);
       startPolling(res.process_id);
     } catch (err) {
@@ -410,10 +413,10 @@ export function RecordStep() {
         {/* Form fields */}
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="repo-id">HuggingFace Repo ID</Label>
+            <Label htmlFor="repo-id">Dataset Name</Label>
             <Input
               id="repo-id"
-              placeholder={hfStatus?.username ? `${hfStatus.username}/dataset_name` : "username/dataset_name"}
+              placeholder="pick_cube"
               value={config.repoId}
               onChange={(e) => updateConfig({ repoId: e.target.value })}
               disabled={isRunning || !hfReady}

@@ -28,3 +28,10 @@ webui_config.json
 next-env.d.ts
 
 outputs/
+
+# Local docs (not shared with users)
+PROGRESS.md
+CLAUDE.md
+
+# Playwright MCP session artifacts (screenshots, snapshots)
+.playwright-mcp/

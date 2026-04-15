@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SINGLE_PORT_ROLES, BIMANUAL_PORT_ROLES } from "@/lib/wizard-types";
+import { cn } from "@/lib/utils";
 import { services } from "@/lib/services";
 import { useWizard } from "../wizard-provider";
 import { StepCard } from "../step-card";
@@ -129,15 +130,26 @@ export function PortsStep() {
                     </Select>
                     <Button
                       variant="outline"
-                      size="icon"
                       disabled={!assignedPort || wigglingPort !== null}
                       onClick={() => assignedPort && wiggle(assignedPort)}
-                      title="Wiggle gripper to identify this arm"
+                      title="Wiggle this arm's gripper to confirm which physical arm is connected"
+                      className="group shrink-0 gap-2"
                     >
                       {wigglingPort === assignedPort ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Wiggling...
+                        </>
                       ) : (
-                        <Hand className="h-4 w-4" />
+                        <>
+                          <Hand
+                            className={cn(
+                              "h-4 w-4",
+                              assignedPort && "animate-wiggle group-hover:[animation-duration:0.3s]"
+                            )}
+                          />
+                          Wiggle
+                        </>
                       )}
                     </Button>
                   </div>

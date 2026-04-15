@@ -44,6 +44,34 @@ import { StepCard } from "../step-card";
 // ---------------------------------------------------------------------------
 
 const POLICY_PATHS_KEY = "lerobot_trained_policy_paths";
+const LAST_INFERENCE_REPO_KEY = "lerobot_last_inference_repo_id";
+
+function getLastInferenceRepoId(): string | null {
+  try {
+    return localStorage.getItem(LAST_INFERENCE_REPO_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function saveLastInferenceRepoId(repoId: string) {
+  try {
+    localStorage.setItem(LAST_INFERENCE_REPO_KEY, repoId.trim());
+  } catch {}
+}
+
+function withEvalPrefix(repoId: string): string {
+  const trimmed = repoId.trim();
+  if (!trimmed) return trimmed;
+  const slashIdx = trimmed.lastIndexOf("/");
+  if (slashIdx === -1) {
+    return trimmed.startsWith("eval_") ? trimmed : `eval_${trimmed}`;
+  }
+  const owner = trimmed.slice(0, slashIdx);
+  const name = trimmed.slice(slashIdx + 1);
+  if (!name) return trimmed;
+  return name.startsWith("eval_") ? trimmed : `${owner}/eval_${name}`;
+}
 
 interface SavedPolicy {
   path: string;
@@ -205,7 +233,9 @@ export function InferenceStep() {
     try {
       await services.saveConfig(state);
       await services.stopCameraStreams().catch(() => {});
-      const res = await services.startInference(config);
+      const finalRepoId = withEvalPrefix(config.repoId);
+      const res = await services.startInference({ ...config, repoId: finalRepoId });
+      saveLastInferenceRepoId(finalRepoId);
       dispatch({ type: "SET_INFERENCE_PROCESS_ID", id: res.process_id });
       startPolling(res.process_id);
     } catch (err) {
@@ -365,25 +395,32 @@ export function InferenceStep() {
             <Label htmlFor="eval-repo-id">Evaluation Repo ID</Label>
             <Input
               id="eval-repo-id"
-              placeholder="username/eval_dataset_name"
+              placeholder="username/dataset_name"
               value={config.repoId}
               onChange={(e) => updateConfig({ repoId: e.target.value })}
               disabled={isRunning}
             />
             <p className="text-xs text-muted-foreground">
-              Evaluation results will be saved to this HuggingFace dataset.
+              Evaluation results will be saved to this HuggingFace dataset. The
+              dataset name is automatically prefixed with{" "}
+              <code className="rounded bg-muted px-1 py-0.5 font-mono">eval_</code>{" "}
+              — this is required for evaluation runs.
             </p>
-            {config.repoId.trim() !== "" && (() => {
-              const datasetName = config.repoId.includes("/")
-                ? config.repoId.split("/").pop() || ""
-                : config.repoId;
-              return datasetName && !datasetName.startsWith("eval_") ? (
-                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                  <AlertTriangle className="inline h-3 w-3 mr-1 -mt-0.5" />
-                  Dataset name should start with &quot;eval_&quot; (e.g. username/eval_my_dataset) or it won&apos;t work.
-                </p>
-              ) : null;
-            })()}
+            {config.repoId.trim() !== "" && (
+              <p className="text-xs text-muted-foreground">
+                Will be saved as{" "}
+                <code className="rounded bg-muted px-1 py-0.5 font-mono">
+                  {withEvalPrefix(config.repoId)}
+                </code>
+              </p>
+            )}
+            {config.repoId.trim() !== "" &&
+              withEvalPrefix(config.repoId) === getLastInferenceRepoId() && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                <AlertTriangle className="inline h-3 w-3 mr-1 -mt-0.5" />
+                This repo ID was used in a previous inference run. The old local cache will be cleared automatically before starting.
+              </p>
+            )}
           </div>
 
           {/* Task description */}

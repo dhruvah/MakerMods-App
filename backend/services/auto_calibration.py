@@ -1,6 +1,6 @@
 """Auto-calibration service for SO101 robot arms.
 
-Wraps the lerobot_measure_feetech_ranges.py script, running it as a subprocess
+Wraps the lerobot_auto_calibrate_feetech.py script, running it as a subprocess
 via ProcessManager with real-time log streaming. After the script completes,
 copies the saved calibration file to the standard so101_follower path so it's
 visible to the rest of the UI.
@@ -37,7 +37,7 @@ class AutoCalibrationService:
         """
         return [
             sys.executable,
-            "-m", "lerobot.scripts.lerobot_measure_feetech_ranges",
+            "-m", "lerobot.scripts.lerobot_auto_calibrate_feetech",
             "--port", port,
             "--save",
             "--robot-id", device_id,

@@ -2,6 +2,9 @@
 
 import asyncio
 import json
+import logging
+import shutil
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
@@ -13,6 +16,7 @@ from backend.services.process_manager import process_manager
 
 router = APIRouter()
 config_manager = ConfigManager()
+logger = logging.getLogger(__name__)
 
 
 def build_inference_command(config, request: InferenceRequest) -> list[str]:
@@ -125,15 +129,25 @@ async def start_inference(request: InferenceRequest):
         except PortInUseError as e:
             raise HTTPException(status_code=409, detail={"message": str(e), "owner": e.owner, "port": e.port})
 
+        # Clear stale eval dataset cache to prevent conflicts on re-runs
+        cache_cleared = False
+        cache_dir = Path.home() / ".cache" / "huggingface" / "lerobot" / request.repo_id
+        if cache_dir.exists():
+            shutil.rmtree(cache_dir)
+            cache_cleared = True
+            logger.info("Cleared stale eval cache at %s", cache_dir)
+
         command = build_inference_command(config, request)
         process_id = await process_manager.start_process(command, "inference")
 
         # Register process→ports mapping for release on stop
         await port_lock_manager.register_process(process_id, ports)
 
-        return InferenceResponse(
-            process_id=process_id, message="Inference started successfully"
-        )
+        msg = "Inference started successfully"
+        if cache_cleared:
+            msg += " (previous eval cache cleared)"
+
+        return InferenceResponse(process_id=process_id, message=msg)
 
     except HTTPException:
         raise

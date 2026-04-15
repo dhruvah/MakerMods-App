@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Hand, User } from "lucide-react";
+import { Check, Hand } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { RobotMode } from "@/lib/wizard-types";
 import { useWizard } from "../wizard-provider";
@@ -23,14 +23,19 @@ export function RobotTypeStep() {
         <SelectableCard
           selected={state.robotMode === "single"}
           onClick={() => selectMode("single")}
-          icon={<User className="h-8 w-8" />}
+          icon={<Hand className="h-8 w-8" />}
           title="Single Arm"
           description="One follower + one leader arm"
         />
         <SelectableCard
           selected={state.robotMode === "bimanual"}
           onClick={() => selectMode("bimanual")}
-          icon={<Hand className="h-8 w-8" />}
+          icon={
+            <div className="flex items-center gap-1">
+              <Hand className="h-8 w-8" />
+              <Hand className="h-8 w-8 -scale-x-100" />
+            </div>
+          }
           title="Bimanual"
           description="Two follower + two leader arms"
         />

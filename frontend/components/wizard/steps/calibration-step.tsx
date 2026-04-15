@@ -638,10 +638,12 @@ export function CalibrationStep() {
           <Alert>
             <Info className="h-4 w-4" />
             <AlertDescription>
-              Left and right arms of the same type must share the same base ID.
-              For example, if the left follower is{" "}
-              <code className="text-xs">my_robot_left</code>, the right follower must be{" "}
-              <code className="text-xs">my_robot_right</code>.
+              <p>
+                Left and right arms of the same type must share the same base ID.
+                For example, if the left follower is{" "}
+                <code className="text-xs">my_robot_left</code>, the right follower must be{" "}
+                <code className="text-xs">my_robot_right</code>.
+              </p>
             </AlertDescription>
           </Alert>
         )}

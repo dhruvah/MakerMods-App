@@ -180,7 +180,7 @@ async def stop_calibration(process_id: str):
 
 
 # --- Auto-calibration endpoints ---
-# Runs lerobot_measure_feetech_ranges.py as a subprocess via ProcessManager.
+# Runs lerobot_auto_calibrate_feetech.py as a subprocess via ProcessManager.
 # Logs are streamed via the existing /ws/logs/{process_id} WebSocket.
 
 
@@ -202,7 +202,7 @@ class AutoCalibrationStartResponse(BaseModel):
 async def start_auto_calibration(request: AutoCalibrationStartRequest):
     """Start auto-calibration for an entire arm.
 
-    Runs lerobot_measure_feetech_ranges with --save to calibrate all 6 motors
+    Runs lerobot_auto_calibrate_feetech with --save to calibrate all 6 motors
     and persist the result. Logs can be streamed via /ws/logs/{process_id}.
     """
     from backend.services.port_lock_manager import PortInUseError, port_lock_manager

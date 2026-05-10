@@ -50,13 +50,14 @@ type Action =
   | { type: "CLEAR_TRAINING_JOB" }
   | { type: "SET_INFERENCE_CONFIG"; config: Partial<InferenceConfig> }
   | { type: "SET_INFERENCE_PROCESS_ID"; id: string | null }
+  | { type: "SET_ACT_PHASES"; phases: string[] }
   | { type: "TOGGLE_DEBUG_MODE" }
   | { type: "CLEAR_ALL_VALUES" }
   | { type: "RESTART" };
 
 // Step completion checker
 function computeCompletedSteps(state: WizardState): boolean[] {
-  const completed = [false, false, false, false, false, false, false, false];
+  const completed = [false, false, false, false, false, false, false, false, false];
 
   // Step 0: Robot Type
   completed[0] = state.robotMode !== null;
@@ -97,11 +98,12 @@ function computeCompletedSteps(state: WizardState): boolean[] {
     }
   }
 
-  // Steps 4-7: complete once the user has visited them
+  // Steps 4-8: complete once the user has visited them
   completed[4] = state.teleStepVisited;
   completed[5] = state.recordStepVisited;
   completed[6] = state.trainingStepVisited;
   completed[7] = state.inferenceStepVisited;
+  completed[8] = state.actStepVisited;
 
   return completed;
 }
@@ -145,6 +147,9 @@ function resetStepsFrom(state: WizardState, fromStep: number): WizardState {
     s.inferenceConfig = { ...INITIAL_INFERENCE_CONFIG };
     s.inferenceProcessId = null;
   }
+  if (fromStep <= 8) {
+    s.actStepVisited = false;
+  }
 
   s.completedSteps = computeCompletedSteps(s);
   return s;
@@ -163,6 +168,7 @@ function reducer(state: WizardState, action: Action): WizardState {
         recordStepVisited: state.recordStepVisited || action.step === 5,
         trainingStepVisited: state.trainingStepVisited || action.step === 6,
         inferenceStepVisited: state.inferenceStepVisited || action.step === 7,
+        actStepVisited: state.actStepVisited || action.step === 8,
       };
       break;
 
@@ -318,6 +324,10 @@ function reducer(state: WizardState, action: Action): WizardState {
       next = { ...state, inferenceProcessId: action.id };
       break;
 
+    case "SET_ACT_PHASES":
+      next = { ...state, actPhases: action.phases };
+      break;
+
     case "TOGGLE_DEBUG_MODE":
       next = { ...state, debugMode: !state.debugMode };
       break;
@@ -383,7 +393,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     () =>
       dispatch({
         type: "GO_TO_STEP",
-        step: Math.min(state.currentStep + 1, 7),
+        step: Math.min(state.currentStep + 1, 8),
       }),
     [state.currentStep]
   );

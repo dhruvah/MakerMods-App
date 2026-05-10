@@ -427,6 +427,35 @@ export const services = {
     return fetchAPI(`/api/training/cancel/${jobId}`, { method: "POST" });
   },
 
+  getActStatus: async (): Promise<{
+    phase: string;
+    elapsed_s: number;
+    paused: boolean;
+    available_phases: string[];
+  }> => {
+    return fetchAPI("/api/act/status");
+  },
+
+  actAdvancePhase: async (phaseName: string): Promise<{ phase: string; elapsed_s: number }> => {
+    return fetchAPI("/api/act/advance-phase", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phase_name: phaseName }),
+    });
+  },
+
+  actSetPhases: async (phases: string[]): Promise<{ phases: string[] }> => {
+    return fetchAPI("/api/act/set-phases", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phases }),
+    });
+  },
+
+  actReset: async (): Promise<void> => {
+    await fetchAPI("/api/act/reset", { method: "POST" });
+  },
+
   getDatasetImageKeys: async (repoId: string): Promise<string[]> => {
     if (USE_MOCK) return ["observation.images.front_cam"];
     return fetchAPI(`/api/huggingface/dataset-image-keys?repo_id=${encodeURIComponent(repoId)}`);

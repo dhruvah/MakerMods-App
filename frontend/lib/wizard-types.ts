@@ -154,6 +154,10 @@ export interface WizardState {
   inferenceStepVisited: boolean;
   inferenceConfig: InferenceConfig;
   inferenceProcessId: string | null;
+
+  // Step 8: ACT Control
+  actStepVisited: boolean;
+  actPhases: string[];
 }
 
 // Port roles by mode
@@ -201,6 +205,7 @@ export const STEPS = [
   { label: "Record", description: "Record training data" },
   { label: "Training", description: "Train a policy with Qualia Studios" },
   { label: "Inference", description: "Run trained policy on robot" },
+  { label: "ACT Control", description: "Monitor and control multi-phase ACT orchestration" },
 ] as const;
 
 // Initial state
@@ -240,7 +245,7 @@ export const INITIAL_RECORDING_CONFIG: RecordingConfig = {
 
 export const INITIAL_STATE: WizardState = {
   currentStep: 0,
-  completedSteps: [false, false, false, false, false, false, false, false],
+  completedSteps: [false, false, false, false, false, false, false, false, false],
   debugMode: false,
   robotMode: null,
   detectedPorts: [],
@@ -264,6 +269,13 @@ export const INITIAL_STATE: WizardState = {
   inferenceStepVisited: false,
   inferenceConfig: { ...INITIAL_INFERENCE_CONFIG },
   inferenceProcessId: null,
+  actStepVisited: false,
+  actPhases: [
+    "pick_and_drop",
+    "press_lever",
+    "wait_for_toast",
+    "pick_out_of_toaster",
+  ],
 };
 
 // ─── Bimanual calibration naming validation ─────────────────────────────────

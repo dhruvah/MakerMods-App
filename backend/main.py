@@ -65,6 +65,7 @@ async def shutdown_event():
 
 # Import and include routers
 from backend.api import (
+    act,
     base_control,
     calibration,
     config,
@@ -78,6 +79,7 @@ from backend.api import (
     training,
 )
 
+app.include_router(act.router, prefix="/api/act", tags=["act"])
 app.include_router(base_control.router, prefix="/api/base-control", tags=["base-control"])
 app.include_router(setup.router, prefix="/api/setup", tags=["setup"])
 app.include_router(calibration.router, prefix="/api/calibration", tags=["calibration"])

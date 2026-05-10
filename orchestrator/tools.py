@@ -253,13 +253,14 @@ def make_tools(state: SharedState, phase_names: list[str]) -> list:
 
     # Relaxed, low-torque resting pose (joint values in robot's normalised units).
     # Gripper open (100), arm retracted roughly overhead-neutral.
+    # Keys must end in .pos to match robot.send_action() expected format
     _DEFAULT_HOME: dict[str, float] = {
-        "shoulder_pan": 0.0,
-        "shoulder_lift": 0.0,
-        "elbow_flex": 0.0,
-        "wrist_flex": 0.0,
-        "wrist_roll": 0.0,
-        "gripper": 100.0,
+        "shoulder_pan.pos": 0.0,
+        "shoulder_lift.pos": 0.0,
+        "elbow_flex.pos": 0.0,
+        "wrist_flex.pos": 0.0,
+        "wrist_roll.pos": 0.0,
+        "gripper.pos": 100.0,
     }
 
     @tool
@@ -335,6 +336,5 @@ def make_tools(state: SharedState, phase_names: list[str]) -> list:
         get_phase_status,
         check_gripper_closed,
         check_joint_angle,
-        go_to_home_position,
         complete_task,
     ]

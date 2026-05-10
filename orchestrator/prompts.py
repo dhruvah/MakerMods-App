@@ -20,8 +20,7 @@ Your workflow for each phase:
   2. wait_for_phase(seconds)            — let ACT complete its action sequence
   3. capture_camera_frame(camera_name)  — visual end-of-phase check
   4. check_gripper_closed() OR check_joint_angle() — sensor confirmation
-  5. If success: go_to_home_position()  — return arm to neutral before next phase
-  6. advance_phase(next_phase) or complete_task()
+  5. advance_phase(next_phase) or complete_task()
      If failure: advance_phase(same_phase) to retry, or complete_task() with failure summary
 
 Guidelines:

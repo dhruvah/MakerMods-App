@@ -130,7 +130,7 @@ def run(
 
                 # Check convergence: all joints within tolerance
                 at_home = all(
-                    abs(float(obs_raw.get(f"{j}.pos", home_pos[j])) - home_pos[j]) < 0.05
+                    abs(float(obs_raw.get(j, home_pos[j])) - home_pos[j]) < 3.0
                     for j in home_pos
                 )
                 if at_home:

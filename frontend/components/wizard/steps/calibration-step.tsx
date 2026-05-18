@@ -252,6 +252,7 @@ function NewCalibrationPanel({
               alt="SO-101 arm in middle position (side view)"
               width={800}
               height={640}
+              unoptimized
               className="h-auto w-full max-w-sm object-contain"
               priority
             />

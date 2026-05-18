@@ -28,7 +28,7 @@ import { BaseControlPanel } from "./base-control-panel";
 type TeleState = "idle" | "starting" | "running" | "error" | "stopped";
 
 export function TeleoperateStep() {
-  const { state, dispatch, allPriorStepsComplete } = useWizard();
+  const { state, dispatch, stepsComplete } = useWizard();
   const [teleState, setTeleState] = useState<TeleState>(
     state.teleProcessId ? "running" : "idle"
   );
@@ -36,7 +36,8 @@ export function TeleoperateStep() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showCameras, setShowCameras] = useState(false);
   const [baseConnected, setBaseConnected] = useState(false);
-  const priorComplete = allPriorStepsComplete(4);
+  // Cameras (step 2) are not required for teleoperation
+  const priorComplete = stepsComplete([0, 1, 3]);
 
   const selectedCameraFeeds = state.cameraSelections
     .filter((c) => c.included && c.name)
@@ -65,12 +66,12 @@ export function TeleoperateStep() {
             setErrorMsg(status.error_message || "Process exited with an error");
             setShowLogs(true);
             // Ensure port locks are released even if _collect_logs hasn't finished cleanup
-            services.stopTeleoperation(processId).catch(() => {});
+            services.stopProcess(processId).catch(() => {});
             stopPolling();
           } else if (status.state === "stopped") {
             setTeleState("stopped");
             // Ensure port locks are released
-            services.stopTeleoperation(processId).catch(() => {});
+            services.stopProcess(processId).catch(() => {});
             stopPolling();
           }
         } catch {

@@ -347,6 +347,7 @@ interface WizardContextValue {
   clearAllValues: () => void;
   restart: () => void;
   allPriorStepsComplete: (step: number) => boolean;
+  stepsComplete: (indices: number[]) => boolean;
 }
 
 const WizardContext = createContext<WizardContextValue | null>(null);
@@ -405,6 +406,11 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     [state.completedSteps]
   );
 
+  const stepsComplete = useCallback(
+    (indices: number[]) => indices.every((i) => state.completedSteps[i]),
+    [state.completedSteps]
+  );
+
   return (
     <WizardContext.Provider
       value={{
@@ -415,6 +421,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
         clearAllValues,
         restart,
         allPriorStepsComplete,
+        stepsComplete,
       }}
     >
       {children}

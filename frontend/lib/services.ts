@@ -225,7 +225,7 @@ export const services = {
               cameras,
             },
           };
-    await fetchAPI("/api/config", {
+    await fetchAPI("/api/config/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(config),
